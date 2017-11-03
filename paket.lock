@@ -1,0 +1,4 @@
+RESTRICTION: == net45
+NUGET
+  remote: https://www.nuget.org/api/v2
+    CNTK.CPUOnly (2.2)
