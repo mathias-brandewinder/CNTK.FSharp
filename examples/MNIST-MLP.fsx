@@ -18,6 +18,75 @@ open System.Collections.Generic
 
 let shape (dims:int seq) = NDShape.CreateNDShape dims
 
+let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
+    dict.Add(key,value)
+    dict
+
+let dataMap xs = 
+    let dict = Dictionary<Variable,Value>()
+    xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
+
+let FullyConnectedLinearLayer(
+    input:Variable, 
+    outputDim:int, 
+    device:DeviceDescriptor,
+    outputName:string) : Function =
+
+    let inputDim = input.Shape.[0]
+
+    let timesParam = 
+        new Parameter(
+            shape [outputDim; inputDim], 
+            DataType.Float,
+            CNTKLib.GlorotUniformInitializer(
+                float CNTKLib.DefaultParamInitScale,
+                CNTKLib.SentinelValueForInferParamInitRank,
+                CNTKLib.SentinelValueForInferParamInitRank, 
+                uint32 1),
+            device, 
+            "timesParam")
+
+    let timesFunction = 
+        new Variable(CNTKLib.Times(timesParam, input, "times"))
+
+    let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
+    CNTKLib.Plus(plusParam, timesFunction, outputName)
+
+type Activation = 
+    | None
+    | ReLU
+    | Sigmoid
+    | Tanh
+
+let Dense(
+    input:Variable, 
+    outputDim:int,
+    device:DeviceDescriptor,
+    activation:Activation, 
+    outputName:string) : Function =
+
+    let input : Variable =
+        if (input.Shape.Rank <> 1)
+        then
+            let newDim = input.Shape.Dimensions |> Seq.reduce(fun d1 d2 -> d1 * d2)
+            new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
+        else input
+
+    let fullyConnected : Function = 
+        FullyConnectedLinearLayer(input, outputDim, device, outputName)
+    
+    match activation with
+    | Activation.None -> fullyConnected
+    | Activation.ReLU -> CNTKLib.ReLU(new Variable(fullyConnected))
+    | Activation.Sigmoid -> CNTKLib.Sigmoid(new Variable(fullyConnected))
+    | Activation.Tanh -> CNTKLib.Tanh(new Variable(fullyConnected))
+
+let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
+    minibatchValues 
+    |> Seq.exists(fun a -> a.sweepEnd)
+
+// definition / configuration of the network
+
 let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
 
 let featureStreamName = "features"
@@ -44,70 +113,6 @@ let device = DeviceDescriptor.CPUDevice
 
 let scaledInput = CNTKLib.ElementTimes(Constant.Scalar<float32>(scalingFactor, device), input)
 
-let FullyConnectedLinearLayer(
-    input:Variable, 
-    outputDim:int, 
-    device:DeviceDescriptor,
-    outputName:string) : Function =
-
-// defaults:
-// string outputName = ""
-    let inputDim = input.Shape.[0]
-
-    let timesParam = 
-        new Parameter(
-            shape [outputDim; inputDim], 
-            DataType.Float,
-            CNTKLib.GlorotUniformInitializer(
-                float CNTKLib.DefaultParamInitScale,
-                CNTKLib.SentinelValueForInferParamInitRank,
-                CNTKLib.SentinelValueForInferParamInitRank, 
-                uint32 1),
-            device, 
-            "timesParam")
-
-    let timesFunction = 
-        // Variable transform has been inserted
-        new Variable(CNTKLib.Times(timesParam, input, "times"))
-
-    let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
-    CNTKLib.Plus(plusParam, timesFunction, outputName)
-
-type Activation = 
-    | None
-    | ReLU
-    | Sigmoid
-    | Tanh
-
-let Dense(
-    input:Variable, 
-    outputDim:int,
-    device:DeviceDescriptor,
-    activation:Activation, 
-    outputName:string) : Function =
-
-    // defaults:
-    // Activation activation = Activation.None, string outputName = "")
-
-    let input : Variable =
-        if (input.Shape.Rank <> 1)
-        then
-            let newDim = input.Shape.Dimensions |> Seq.reduce(fun d1 d2 -> d1 * d2)
-            // inserted explicit Variable transformation
-            new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
-        else input
-
-    let fullyConnected : Function = 
-        FullyConnectedLinearLayer(input, outputDim, device, outputName)
-    
-    // inserted explicit Variable transformations
-    match activation with
-    | Activation.None -> fullyConnected
-    | Activation.ReLU -> CNTKLib.ReLU(new Variable(fullyConnected))
-    | Activation.Sigmoid -> CNTKLib.Sigmoid(new Variable(fullyConnected))
-    | Activation.Tanh -> CNTKLib.Tanh(new Variable(fullyConnected))
-    
-
 let CreateMLPClassifier(
     device:DeviceDescriptor, 
     numOutputClasses:int,
@@ -115,7 +120,6 @@ let CreateMLPClassifier(
     scaledInput:Function,
     classifierName:string) =
 
-        // inserted explicit Variable conversions
         let dense1:Function = Dense(new Variable(scaledInput), hiddenLayerDim, device, Activation.Sigmoid, "");
         let classifierOutput:Function = Dense(new Variable(dense1), numOutputClasses, device, Activation.None, classifierName);
         classifierOutput
@@ -125,7 +129,6 @@ let classifierOutput = CreateMLPClassifier(device, numClasses, hiddenLayerDim, s
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
 let trainingLoss = CNTKLib.CrossEntropyWithSoftmax(new Variable(classifierOutput), labels, "lossFunction")
 let prediction = CNTKLib.ClassificationError(new Variable(classifierOutput), labels, "classificationError")
-
 
 let minibatchSource = 
     MinibatchSource.TextFormatMinibatchSource(
@@ -149,8 +152,6 @@ let parameterLearners =
 
 let trainer = Trainer.CreateTrainer(classifierOutput, trainingLoss, prediction, parameterLearners)
 
-
-
 let minibatchSize = uint32 64
 let outputFrequencyInMinibatches = 20
 
@@ -165,38 +166,43 @@ let printTrainingProgress(trainer:Trainer, minibatchIdx:int, outputFrequencyInMi
         let evaluationValue = trainer.PreviousMinibatchEvaluationAverage() |> float32
         printfn "Minibatch: %i CrossEntropyLoss = %f, EvaluationCriterion = %f" minibatchIdx trainLossValue evaluationValue
 
-let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
-    minibatchValues 
-    |> Seq.exists(fun a -> a.sweepEnd)
+let learn epochs =
 
+    let rec learnEpoch (step,epoch) = 
 
-// this is terrible, need to rewrite
-let mutable i = 0
-let mutable epochs = 5
+        if epoch <= 0
+        // we are done
+        then ignore ()
+        else
+            let step = step + 1
+            let minibatchData = minibatchSource.GetNextMinibatch(minibatchSize, device)
 
-while (epochs > 0) do
+            let arguments : IDictionary<Variable, MinibatchData> =
+                [
+                    input, minibatchData.[featureStreamInfo]
+                    labels, minibatchData.[labelStreamInfo]
+                ]
+                |> dict
 
-    let minibatchData = minibatchSource.GetNextMinibatch(minibatchSize, device)
-    let arguments : IDictionary<Variable, MinibatchData> =
-        [
-            input, minibatchData.[featureStreamInfo]
-            labels, minibatchData.[labelStreamInfo]
-        ]
-        |> dict
+            trainer.TrainMinibatch(arguments, device) |> ignore
 
-    trainer.TrainMinibatch(arguments, device)
-    i <- i + 1
-    printTrainingProgress(trainer, i, outputFrequencyInMinibatches)
+            printTrainingProgress(trainer, step, outputFrequencyInMinibatches)
 
-    // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
-    // Batching will not end. Each time minibatchSource completes an sweep (epoch),
-    // the last minibatch data will be marked as end of a sweep. We use this flag
-    // to count number of epochs.
-    if (MiniBatchDataIsSweepEnd(minibatchData.Values))
-    then
-        epochs <- epochs - 1
+            // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
+            // Batching will not end. Each time minibatchSource completes an sweep (epoch),
+            // the last minibatch data will be marked as end of a sweep. We use this flag
+            // to count number of epochs.
+            let epoch = 
+                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
+                then epoch - 1
+                else epoch
 
+            learnEpoch (step,epoch)
 
+    learnEpoch (0,epochs)
+
+let epochs = 5
+learn epochs
 
 classifierOutput.Save(modelFile)
 
@@ -206,8 +212,6 @@ let minibatchSourceNewModel =
         Path.Combine(ImageDataFolder, "Test_cntk_text.txt"), 
         streamConfigurations, 
         MinibatchSource.FullDataSweep)
-
-
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
@@ -221,8 +225,6 @@ let ValidateModelWithMinibatchSource(
     maxCount:int
     ) =
 
-// defaults:
-// int maxCount = 1000
         let model : Function = Function.Load(modelFile, device)
         let imageInput = model.Arguments.[0]
         let labelOutput = 
@@ -256,16 +258,18 @@ let ValidateModelWithMinibatchSource(
                         l.IndexOf largest
                         )
 
-                let inputDataMap : Dictionary<Variable, Value> =
-                    let x = Dictionary<Variable, Value>()
-                    x.Add(imageInput, minibatchData.[featureStreamInfo].data)
-                    x
+                let inputDataMap = 
+                    [
+                        imageInput, minibatchData.[featureStreamInfo].data
+                    ]
+                    |> dataMap
 
-                let outputDataMap : Dictionary<Variable, Value> =
-                    let x = Dictionary<Variable, Value>()
-                    x.Add(labelOutput, null)
-                    x
-
+                let outputDataMap = 
+                    [ 
+                        labelOutput, null 
+                    ] 
+                    |> dataMap
+                    
                 model.Evaluate(inputDataMap, outputDataMap, device)
 
                 let outputData = outputDataMap.[labelOutput].GetDenseData<float32>(labelOutput)
@@ -275,10 +279,6 @@ let ValidateModelWithMinibatchSource(
                         let largest = l |> Seq.max
                         l.IndexOf largest
                         )
-
-                (actualLabels,expectedLabels)
-                ||> Seq.zip
-                |> Seq.iter (fun (x,y) -> printfn "Real: %A, Pred: %A" x y)
 
                 let misMatches = 
                     (actualLabels,expectedLabels)
@@ -293,7 +293,7 @@ let ValidateModelWithMinibatchSource(
 
         countErrors (uint32 0,0)
 
-let _ = 
+let total,errors = 
     ValidateModelWithMinibatchSource(
         modelFile, 
         minibatchSourceNewModel,
@@ -304,3 +304,5 @@ let _ =
         classifierName, 
         device,
         1000)
+
+printfn "Total: %i / Errors: %i" total errors
