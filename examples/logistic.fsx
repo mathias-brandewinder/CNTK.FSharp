@@ -15,8 +15,6 @@ open System.Collections.Generic
 
 // Helpers to simplify model creation from F#
 
-let shape (dims:int seq) = NDShape.CreateNDShape dims
-
 // Creating a synthetic dataset
 
 let generateGaussianNoise (random:Random) (mean, stdDev) =
@@ -63,17 +61,6 @@ let GenerateValueData(sampleSize:int, inputDim:int, numOutputClasses:int, device
 
     featureValue, labelValue
     
-let printTrainingProgress(trainer:Trainer, minibatchIdx:int, outputFrequencyInMinibatches:int) =
-        
-    if 
-        // print out only after every x minibatches
-        (minibatchIdx % outputFrequencyInMinibatches) = 0 && 
-        trainer.PreviousMinibatchSampleCount() <> (uint32 0)
-    then  
-        let trainLossValue = trainer.PreviousMinibatchLossAverage() |> float32
-        let evaluationValue = trainer.PreviousMinibatchEvaluationAverage() |> float32
-        printfn "Minibatch: %i CrossEntropyLoss = %f, EvaluationCriterion = %f" minibatchIdx trainLossValue evaluationValue
-
 // Creating and training the model
 
 let inputDim = 3
@@ -110,7 +97,9 @@ let trainer = Trainer.CreateTrainer(classifierOutput, loss, evalError, parameter
 let minibatchSize = 64
 let numMinibatchesToTrain = 1000
 let updatePerMinibatches = 50
-        
+
+let report = progress (trainer, updatePerMinibatches) 
+
 for minibatchCount in 1 .. (numMinibatchesToTrain) do
         
     let features, labels = GenerateValueData(minibatchSize, inputDim, numOutputClasses, device)
@@ -124,4 +113,4 @@ for minibatchCount in 1 .. (numMinibatchesToTrain) do
             
     trainer.TrainMinibatch(batch, device) |> ignore
             
-    printTrainingProgress(trainer, minibatchCount, updatePerMinibatches)
+    report minibatchCount |> printer

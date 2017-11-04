@@ -16,16 +16,6 @@ open System.Collections.Generic
 
 // Helpers to simplify model creation from F#
 
-let shape (dims:int seq) = NDShape.CreateNDShape dims
-
-let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
-    dict.Add(key,value)
-    dict
-
-let dataMap xs = 
-    let dict = Dictionary<Variable,Value>()
-    xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
-
 let FullyConnectedLinearLayer(
     input:Variable, 
     outputDim:int, 
@@ -51,12 +41,6 @@ let FullyConnectedLinearLayer(
 
     let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
     CNTKLib.Plus(plusParam, timesFunction, outputName)
-
-type Activation = 
-    | None
-    | ReLU
-    | Sigmoid
-    | Tanh
 
 let Dense(
     input:Variable, 
@@ -155,18 +139,9 @@ let trainer = Trainer.CreateTrainer(classifierOutput, trainingLoss, prediction, 
 let minibatchSize = uint32 64
 let outputFrequencyInMinibatches = 20
 
-let printTrainingProgress(trainer:Trainer, minibatchIdx:int, outputFrequencyInMinibatches:int) =
-        
-    if 
-        // print out only after every x minibatches
-        (minibatchIdx % outputFrequencyInMinibatches) = 0 && 
-        trainer.PreviousMinibatchSampleCount() <> (uint32 0)
-    then  
-        let trainLossValue = trainer.PreviousMinibatchLossAverage() |> float32
-        let evaluationValue = trainer.PreviousMinibatchEvaluationAverage() |> float32
-        printfn "Minibatch: %i CrossEntropyLoss = %f, EvaluationCriterion = %f" minibatchIdx trainLossValue evaluationValue
-
 let learn epochs =
+
+    let report = progress (trainer, outputFrequencyInMinibatches)
 
     let rec learnEpoch (step,epoch) = 
 
@@ -186,8 +161,8 @@ let learn epochs =
 
             trainer.TrainMinibatch(arguments, device) |> ignore
 
-            printTrainingProgress(trainer, step, outputFrequencyInMinibatches)
-
+            report step |> printer
+            
             // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
             // Batching will not end. Each time minibatchSource completes an sweep (epoch),
             // the last minibatch data will be marked as end of a sweep. We use this flag
