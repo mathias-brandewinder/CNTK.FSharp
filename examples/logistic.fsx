@@ -29,28 +29,37 @@ let generateGaussianNoise (random:Random) (mean, stdDev) =
  
 let random = Random(0)
 
-let GenerateRawDataSamples(sampleSize,inputDim,numOutputClasses) =
+// generate synthetic data: each group is normally distributed,
+// centered around (3,3), (6,6), ... 
+// this is not as efficient as the original example, but clearer: 
+// we create an array of labels first, which we then transform
+// into one-hot form, and into its features. 
+let generateSyntheticData(sampleSize,inputDim,numOutputClasses) =
         
-    let features = Array.init (sampleSize * inputDim) (fun _ -> float32 0.)
-    let oneHotLabels = Array.init (sampleSize * numOutputClasses) (fun _ -> float32 0.)
+    // utility one-hot encoder
+    let oneHot classes value = 
+        Array.init classes (fun i -> 
+            if i = value then float32 1. else float32 0.
+            )
+    
+    // generate synthetic feature for given label
+    let generateFeatures label =
+        Array.init inputDim (fun _ -> 
+            generateGaussianNoise random (3.0, 1.0) * (float label + 1.) |> float32
+            )
 
-    for sample in 0 .. sampleSize - 1 do
+    let labels = Array.init sampleSize (fun _ -> random.Next numOutputClasses)
+    let oneHotLabels = labels |> Array.collect (oneHot numOutputClasses)
+    let features = labels |> Array.collect (generateFeatures)
 
-        let label = random.Next(numOutputClasses)
-        for i in 0 .. numOutputClasses - 1 do             
-            oneHotLabels.[sample * numOutputClasses + i] <- if label = i then float32 1.0 else float32 0.0
-                
-        for i in 0 .. inputDim - 1 do               
-            features.[sample * inputDim + i] <- float32 (generateGaussianNoise random (3.0, 1.0)) * float32 (label + 1)
-            
     features, oneHotLabels
-            
+
 let GenerateValueData(sampleSize:int, inputDim:int, numOutputClasses:int, device:DeviceDescriptor) =
         
-    let features, oneHotLabels = GenerateRawDataSamples(sampleSize, inputDim, numOutputClasses)
+    let features, oneHotLabels = generateSyntheticData(sampleSize, inputDim, numOutputClasses)
             
-    let featureValue = Value.CreateBatch (NDShape.CreateNDShape [ inputDim ], features, device)
-    let labelValue = Value.CreateBatch (NDShape.CreateNDShape [ numOutputClasses ], oneHotLabels, device)
+    let featureValue = Value.CreateBatch (shape [ inputDim ], features, device)
+    let labelValue = Value.CreateBatch (shape [ numOutputClasses ], oneHotLabels, device)
 
     featureValue, labelValue
     
@@ -95,7 +104,7 @@ let parameterLearners =
         [ 
             Learner.SGDLearner(classifierOutput.Parameters(), learningRatePerSample) 
         ])
-        
+      
 let trainer = Trainer.CreateTrainer(classifierOutput, loss, evalError, parameterLearners)
 
 let minibatchSize = 64
