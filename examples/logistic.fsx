@@ -11,9 +11,18 @@ open CNTK
 open System
 open System.Collections.Generic
 
-// Conversion of the original C# code to an F# script
+// utility: create a linear combination
+let linearModel 
+    (device:DeviceDescriptor)
+    (outputDim:int)
+    (input:VarOrFun) =
 
-// Helpers to simplify model creation from F#
+        let inputDim = input.Variable.Shape.[0]
+
+        let weights = new Parameter(shape [ outputDim; inputDim ], DataType.Float, 1.0, device, "w")
+        let bias = new Parameter(shape [ outputDim ], DataType.Float, 0.0, device, "b")
+        
+        (Var weights * input) + Var bias
 
 // Creating a synthetic dataset
 
@@ -68,31 +77,23 @@ let numOutputClasses = 2
 
 let device = DeviceDescriptor.CPUDevice
 
-let featureVariable = Variable.InputVariable(shape[inputDim], DataType.Float)
-let labelVariable = Variable.InputVariable(shape[numOutputClasses], DataType.Float)
+let featureVariable = Variable.InputVariable(shape[inputDim], DataType.Float) |> Var
+let labelVariable = Variable.InputVariable(shape[numOutputClasses], DataType.Float) |> Var
 
-let createLinearModel(input:Variable, outputDim:int, device:DeviceDescriptor) =
-        
-    let inputDim = input.Shape.[0]
+let classifierOutput = featureVariable |> linearModel device numOutputClasses
 
-    let weights = new Parameter(shape [ outputDim; inputDim ], DataType.Float, 1.0, device, "w")
-    let bias = new Parameter(shape [ outputDim ], DataType.Float, 0.0, device, "b")
-        
-    new Variable(CNTKLib.Times(weights, input)) + bias
-
-let classifierOutput = createLinearModel(featureVariable, numOutputClasses, device)
-let loss = CNTKLib.CrossEntropyWithSoftmax(new Variable(classifierOutput), labelVariable)
-let evalError = CNTKLib.ClassificationError(new Variable(classifierOutput), labelVariable)
+let loss = crossEntropyWithSoftmax (classifierOutput,labelVariable)
+let evalError = classificationError (classifierOutput,labelVariable)
 
 let learningRatePerSample = new TrainingParameterScheduleDouble(0.02, uint32 1)
 
 let parameterLearners =
     ResizeArray<Learner>(
         [ 
-            Learner.SGDLearner(classifierOutput.Parameters(), learningRatePerSample) 
+            Learner.SGDLearner(classifierOutput.Function.Parameters(), learningRatePerSample) 
         ])
       
-let trainer = Trainer.CreateTrainer(classifierOutput, loss, evalError, parameterLearners)
+let trainer = Trainer.CreateTrainer(classifierOutput.Function, loss, evalError, parameterLearners)
 
 let minibatchSize = 64
 let numMinibatchesToTrain = 1000
@@ -106,8 +107,8 @@ for minibatchCount in 1 .. (numMinibatchesToTrain) do
     
     let batch = 
         [ 
-            (featureVariable, features) 
-            (labelVariable, labels) 
+            (featureVariable.Variable, features) 
+            (labelVariable.Variable, labels) 
         ] 
         |> dict
             

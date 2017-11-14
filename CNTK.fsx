@@ -35,6 +35,29 @@ open CNTK
 
 // utilities
 
+type VarOrFun =
+    | Var of Variable
+    | Fun of Function
+    member this.Variable =
+        match this with
+        | Var v -> v
+        | Fun f -> new Variable(f)
+    member this.Function =
+        match this with
+        | Var v -> v.ToFunction ()
+        | Fun f -> f
+    static member (+) (left:VarOrFun,right:VarOrFun) = 
+        (left.Variable + right.Variable) |> Fun
+    static member (*) (left:VarOrFun,right:VarOrFun) =
+        CNTKLib.Times (left.Variable, right.Variable) |> Fun
+    static member ( *.) (left:VarOrFun,right:VarOrFun) =
+        CNTKLib.ElementTimes (left.Variable, right.Variable) |> Fun
+
+let crossEntropyWithSoftmax (predicted:VarOrFun,actual:VarOrFun) = 
+    CNTKLib.CrossEntropyWithSoftmax(predicted.Variable, actual.Variable)
+let classificationError (predicted:VarOrFun,actual:VarOrFun) = 
+    CNTKLib.ClassificationError(predicted.Variable, actual.Variable)
+      
 let shape (dims:int seq) = NDShape.CreateNDShape dims
 
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
