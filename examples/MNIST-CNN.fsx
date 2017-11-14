@@ -18,9 +18,9 @@ open System.Collections.Generic
 
 let FullyConnectedLinearLayer(
     input:Variable, 
-    outputDim:int, 
-    device:DeviceDescriptor,
-    outputName:string) : Function =
+    outputDim:int,
+    name:string,
+    device:DeviceDescriptor) : Function =
 
     let inputDim = input.Shape.[0]
 
@@ -40,7 +40,29 @@ let FullyConnectedLinearLayer(
         new Variable(CNTKLib.Times(timesParam, input, "times"))
 
     let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
-    CNTKLib.Plus(plusParam, timesFunction, outputName)
+    CNTKLib.Plus(plusParam, timesFunction, name)
+
+let dense
+    (device:DeviceDescriptor)
+    (outputDim:int)
+    // this should not be necessary but setting the name of the function separately 
+    // is causing some grief when re-opening the model!?
+    (name:string)
+    (input:Variable) : Function =
+
+    let input : Variable =
+        if (input.Shape.Rank <> 1)
+        then
+            let newDim = input.Shape.Dimensions |> Seq.reduce(*)
+            new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
+        else input
+
+    FullyConnectedLinearLayer(input, outputDim, name, device)
+
+// this doesn't seem to behave as I expected!?
+let named name (f:Function) = 
+    f.SetName name
+    f
 
 let Dense(
     input:Variable, 
@@ -57,7 +79,7 @@ let Dense(
         else input
 
     let fullyConnected : Function = 
-        FullyConnectedLinearLayer(input, outputDim, device, outputName)
+        FullyConnectedLinearLayer(input, outputDim, outputName, device)
     
     match activation with
     | Activation.None -> fullyConnected
@@ -96,6 +118,73 @@ let scalingFactor = float32 (1./255.)
 let device = DeviceDescriptor.CPUDevice
 
 let scaledInput = CNTKLib.ElementTimes(Constant.Scalar<float32>(scalingFactor, device), input)
+
+type Kernel = {
+    Width:int
+    Height:int
+    }
+
+type Conv2D = {
+    Kernel:Kernel
+    InputChannels:int
+    OutputFeatureMap:int
+    }
+
+type Window = {
+    Width:int
+    Height:int 
+    }
+
+type Stride = {
+    Horizontal:int
+    Vertical:int
+    }
+
+type Pooling2D = {
+    PoolingType:PoolingType
+    Window:Window
+    Stride:Stride
+    }
+
+let pooling2D
+    (pooling:Pooling2D)
+    (input:Variable) : Function = 
+
+        CNTKLib.Pooling(
+            input, 
+            pooling.PoolingType,
+            shape [ pooling.Window.Width; pooling.Window.Height ], 
+            shape [ pooling.Stride.Horizontal; pooling.Stride.Vertical ], 
+            [| true |])
+
+let convolution2D   
+    (device:DeviceDescriptor)
+    (conv:Conv2D)
+    (features:Variable) : Function =
+
+        // parameter initialization hyper parameter
+        let convWScale = 0.26
+
+        let convParams = 
+            new Parameter(
+                shape [ 
+                    conv.Kernel.Width
+                    conv.Kernel.Height
+                    conv.InputChannels
+                    conv.OutputFeatureMap
+                    ], 
+                DataType.Float,
+                CNTKLib.GlorotUniformInitializer(convWScale, -1, 2), 
+                device)
+
+        CNTKLib.Convolution(
+            convParams, 
+            features, 
+            shape [ 1; 1; conv.InputChannels ])
+
+let ReLU = CNTKLib.ReLU
+
+let funcToVar (f:Function) = new Variable(f)
 
 let ConvolutionWithMaxPooling(
     features:Variable, 
@@ -143,54 +232,47 @@ let CreateConvolutionalNeuralNetwork(
     device:DeviceDescriptor, 
     classifierName:string) : Function = 
 
-    // 28x28x1 -> 14x14x4
-    let kernelWidth1 = 3 
-    let kernelHeight1 = 3
-    let numInputChannels1 = 1 
-    let outFeatureMapCount1 = 4
-    let hStride1 = 2 
-    let vStride1 = 2
-    let poolingWindowWidth1 = 3
-    let poolingWindowHeight1 = 3
+        // 28x28x1 -> 14x14x4
+        features
+        |> convolution2D
+            device
+            { 
+                Kernel = { Width = 3; Height = 3 }
+                InputChannels = 1
+                OutputFeatureMap = 4
+            }
+        |> funcToVar
+        |> ReLU
+        |> funcToVar
+        |> pooling2D
+            {
+                PoolingType = PoolingType.Max
+                Window = { Width = 3; Height = 3 }
+                Stride = { Horizontal = 2; Vertical = 2 }
+            }       
+        // 14x14x4 -> 7x7x8
+        |> funcToVar
+        |> convolution2D
+            device
+            { 
+                Kernel = { Width = 3; Height = 3 }
+                InputChannels = 4 // same as OutputFeatureMap previous conv
+                OutputFeatureMap = 8
+            }
+        |> funcToVar
+        |> ReLU
+        |> funcToVar
+        |> pooling2D
+            {
+                PoolingType = PoolingType.Max
+                Window = { Width = 3; Height = 3 }
+                Stride = { Horizontal = 2; Vertical = 2 }
+            }
+        // dense final layer
+        |> funcToVar
+        |> dense device outDims classifierName
+        // |> named classifierName
 
-    let pooling1 : Function = 
-        ConvolutionWithMaxPooling(
-            features, 
-            device, 
-            kernelWidth1, 
-            kernelHeight1,
-            numInputChannels1, 
-            outFeatureMapCount1, 
-            hStride1, 
-            vStride1, 
-            poolingWindowWidth1, 
-            poolingWindowHeight1)
-
-    // 14x14x4 -> 7x7x8
-    let kernelWidth2 = 3
-    let kernelHeight2 = 3
-    let numInputChannels2 = outFeatureMapCount1
-    let outFeatureMapCount2 = 8
-    let hStride2 = 2
-    let vStride2 = 2
-    let poolingWindowWidth2 = 3
-    let poolingWindowHeight2 = 3
-
-    let pooling2 : Function = 
-        ConvolutionWithMaxPooling(
-            new Variable(pooling1), 
-            device, 
-            kernelWidth2, 
-            kernelHeight2,
-            numInputChannels2, 
-            outFeatureMapCount2, 
-            hStride2, 
-            vStride2, 
-            poolingWindowWidth2, 
-            poolingWindowHeight2)
-
-    let denseLayer : Function = Dense(new Variable(pooling2), outDims, device, Activation.None, classifierName)
-    denseLayer
 
 let classifierOutput = CreateConvolutionalNeuralNetwork(new Variable(scaledInput), numClasses, device, classifierName)
 
