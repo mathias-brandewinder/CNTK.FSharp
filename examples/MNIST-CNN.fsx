@@ -98,7 +98,6 @@ let classifierOutput =
             OutputFeatureMap = 4
         }
     |> ReLU
-    |> funcToVar
     |> Conv2D.pooling
         {
             PoolingType = PoolingType.Max
@@ -106,7 +105,6 @@ let classifierOutput =
             Stride = { Horizontal = 2; Vertical = 2 }
         }       
     // 14x14x4 -> 7x7x8
-    |> funcToVar
     |> Conv2D.convolution
         device
         { 
@@ -114,9 +112,7 @@ let classifierOutput =
             InputChannels = 4 // same as OutputFeatureMap previous conv
             OutputFeatureMap = 8
         }
-    |> funcToVar
     |> ReLU
-    |> funcToVar
     |> Conv2D.pooling
         {
             PoolingType = PoolingType.Max
@@ -124,13 +120,12 @@ let classifierOutput =
             Stride = { Horizontal = 2; Vertical = 2 }
         }
     // dense final layer
-    |> funcToVar
     |> dense device numClasses classifierName
 
 
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
-let trainingLoss = CNTKLib.CrossEntropyWithSoftmax(new Variable(classifierOutput), labels, "lossFunction")
-let prediction = CNTKLib.ClassificationError(new Variable(classifierOutput), labels, "classificationError")
+let trainingLoss = CNTKLib.CrossEntropyWithSoftmax(classifierOutput.Variable, labels, "lossFunction")
+let prediction = CNTKLib.ClassificationError(classifierOutput.Variable, labels, "classificationError")
 
 // set per sample learning rate
 let learningRatePerSample : CNTK.TrainingParameterScheduleDouble = 
@@ -139,11 +134,11 @@ let learningRatePerSample : CNTK.TrainingParameterScheduleDouble =
 let parameterLearners = 
     ResizeArray<Learner>(
         [
-            Learner.SGDLearner(classifierOutput.Parameters(), learningRatePerSample)
+            Learner.SGDLearner(classifierOutput.Function.Parameters(), learningRatePerSample)
         ]
         )
 
-let trainer = Trainer.CreateTrainer(classifierOutput, trainingLoss, prediction, parameterLearners)
+let trainer = Trainer.CreateTrainer(classifierOutput.Function, trainingLoss, prediction, parameterLearners)
 
 let streamConfigurations = 
     ResizeArray<StreamConfiguration>(
@@ -207,7 +202,7 @@ let learn epochs =
 let epochs = 10
 learn epochs
 
-classifierOutput.Save(modelFile)
+classifierOutput.Function.Save(modelFile)
 
 // validate the model
 let minibatchSourceNewModel = 
