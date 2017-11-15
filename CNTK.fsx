@@ -60,6 +60,73 @@ let classificationError (predicted:VarOrFun,actual:VarOrFun) =
       
 let shape (dims:int seq) = NDShape.CreateNDShape dims
 
+[<RequireQualifiedAccess>]
+module Conv2D = 
+
+    type Kernel = {
+        Width:int
+        Height:int
+        }
+
+    type Conv2D = {
+        Kernel:Kernel
+        InputChannels:int
+        OutputFeatureMap:int
+        }
+
+    type Window = {
+        Width:int
+        Height:int 
+        }
+
+    type Stride = {
+        Horizontal:int
+        Vertical:int
+        }
+
+    type Pooling2D = {
+        PoolingType:PoolingType
+        Window:Window
+        Stride:Stride
+        }
+
+    let pooling
+        (pooling:Pooling2D)
+        (input:Variable) : Function = 
+
+            CNTKLib.Pooling(
+                input, 
+                pooling.PoolingType,
+                shape [ pooling.Window.Width; pooling.Window.Height ], 
+                shape [ pooling.Stride.Horizontal; pooling.Stride.Vertical ], 
+                [| true |])
+
+    let convolution 
+        (device:DeviceDescriptor)
+        (conv:Conv2D)
+        (features:Variable) : Function =
+
+            // parameter initialization hyper parameter
+            let convWScale = 0.26
+
+            let convParams = 
+                new Parameter(
+                    shape [ 
+                        conv.Kernel.Width
+                        conv.Kernel.Height
+                        conv.InputChannels
+                        conv.OutputFeatureMap
+                        ], 
+                    DataType.Float,
+                    CNTKLib.GlorotUniformInitializer(convWScale, -1, 2), 
+                    device)
+
+            CNTKLib.Convolution(
+                convParams, 
+                features, 
+                shape [ 1; 1; conv.InputChannels ])
+
+
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
     dict
@@ -74,7 +141,10 @@ type Activation =
     | Sigmoid
     | Tanh
 
-
+let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
+    minibatchValues 
+    |> Seq.exists(fun a -> a.sweepEnd)
+    
 type TrainingMiniBatchSummary = {
     Loss:float
     Evaluation:float
