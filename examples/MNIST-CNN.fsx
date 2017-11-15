@@ -73,59 +73,57 @@ let scalingFactor = float32 (1./255.)
 
 let device = DeviceDescriptor.CPUDevice
 
-let scaledInput = CNTKLib.ElementTimes(Constant.Scalar<float32>(scalingFactor, device), input)
+let scale<'T> (device:DeviceDescriptor) (scalar:'T) input =
+    CNTKLib.ElementTimes(Constant.Scalar<'T>(scalar, device),input)
 
 let ReLU = CNTKLib.ReLU
 
 let funcToVar (f:Function) = new Variable(f)
 
-let CreateConvolutionalNeuralNetwork(
-    features:Variable,
-    outDims:int,
-    device:DeviceDescriptor, 
-    classifierName:string) : Function = 
 
-        // 28x28x1 -> 14x14x4
-        features
-        |> Conv2D.convolution
-            device
-            { 
-                Kernel = { Width = 3; Height = 3 }
-                InputChannels = 1
-                OutputFeatureMap = 4
-            }
-        |> funcToVar
-        |> ReLU
-        |> funcToVar
-        |> Conv2D.pooling
-            {
-                PoolingType = PoolingType.Max
-                Window = { Width = 3; Height = 3 }
-                Stride = { Horizontal = 2; Vertical = 2 }
-            }       
-        // 14x14x4 -> 7x7x8
-        |> funcToVar
-        |> Conv2D.convolution
-            device
-            { 
-                Kernel = { Width = 3; Height = 3 }
-                InputChannels = 4 // same as OutputFeatureMap previous conv
-                OutputFeatureMap = 8
-            }
-        |> funcToVar
-        |> ReLU
-        |> funcToVar
-        |> Conv2D.pooling
-            {
-                PoolingType = PoolingType.Max
-                Window = { Width = 3; Height = 3 }
-                Stride = { Horizontal = 2; Vertical = 2 }
-            }
-        // dense final layer
-        |> funcToVar
-        |> dense device outDims classifierName
+let classifierOutput = 
+    input
+    |> scale device scalingFactor
+    // 28x28x1 -> 14x14x4
+    |> funcToVar
+    |> Conv2D.convolution
+        device
+        { 
+            Kernel = { Width = 3; Height = 3 }
+            InputChannels = 1
+            OutputFeatureMap = 4
+        }
+    |> funcToVar
+    |> ReLU
+    |> funcToVar
+    |> Conv2D.pooling
+        {
+            PoolingType = PoolingType.Max
+            Window = { Width = 3; Height = 3 }
+            Stride = { Horizontal = 2; Vertical = 2 }
+        }       
+    // 14x14x4 -> 7x7x8
+    |> funcToVar
+    |> Conv2D.convolution
+        device
+        { 
+            Kernel = { Width = 3; Height = 3 }
+            InputChannels = 4 // same as OutputFeatureMap previous conv
+            OutputFeatureMap = 8
+        }
+    |> funcToVar
+    |> ReLU
+    |> funcToVar
+    |> Conv2D.pooling
+        {
+            PoolingType = PoolingType.Max
+            Window = { Width = 3; Height = 3 }
+            Stride = { Horizontal = 2; Vertical = 2 }
+        }
+    // dense final layer
+    |> funcToVar
+    |> dense device numClasses classifierName
 
-let classifierOutput = CreateConvolutionalNeuralNetwork(new Variable(scaledInput), numClasses, device, classifierName)
 
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
 let trainingLoss = CNTKLib.CrossEntropyWithSoftmax(new Variable(classifierOutput), labels, "lossFunction")
