@@ -92,19 +92,20 @@ module Conv2D =
 
     let pooling
         (pooling:Pooling2D)
-        (input:Variable) : Function = 
+        (input:VarOrFun) = 
 
             CNTKLib.Pooling(
-                input, 
+                input.Variable, 
                 pooling.PoolingType,
                 shape [ pooling.Window.Width; pooling.Window.Height ], 
                 shape [ pooling.Stride.Horizontal; pooling.Stride.Vertical ], 
                 [| true |])
+            |> Fun
 
     let convolution 
         (device:DeviceDescriptor)
         (conv:Conv2D)
-        (features:Variable) : Function =
+        (features:VarOrFun) =
 
             // parameter initialization hyper parameter
             let convWScale = 0.26
@@ -123,8 +124,9 @@ module Conv2D =
 
             CNTKLib.Convolution(
                 convParams, 
-                features, 
+                features.Variable, 
                 shape [ 1; 1; conv.InputChannels ])
+            |> Fun
 
 
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
@@ -144,7 +146,7 @@ type Activation =
 let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     minibatchValues 
     |> Seq.exists(fun a -> a.sweepEnd)
-    
+
 type TrainingMiniBatchSummary = {
     Loss:float
     Evaluation:float

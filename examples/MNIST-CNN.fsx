@@ -15,12 +15,12 @@ open System.Collections.Generic
 // Conversion of the original C# code to an F# script
 
 let FullyConnectedLinearLayer(
-    input:Variable, 
+    input:VarOrFun, 
     outputDim:int,
     name:string,
-    device:DeviceDescriptor) : Function =
+    device:DeviceDescriptor) =
 
-    let inputDim = input.Shape.[0]
+    let inputDim = input.Variable.Shape.[0]
 
     let timesParam = 
         new Parameter(
@@ -35,10 +35,10 @@ let FullyConnectedLinearLayer(
             "timesParam")
     
     let timesFunction = 
-        new Variable(CNTKLib.Times(timesParam, input, "times"))
+        new Variable(CNTKLib.Times(timesParam, input.Variable, "times"))
 
     let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
-    CNTKLib.Plus(plusParam, timesFunction, name)
+    CNTKLib.Plus(plusParam, timesFunction, name) |> Fun
 
 let dense
     (device:DeviceDescriptor)
@@ -46,13 +46,14 @@ let dense
     // this should not be necessary but setting the name of the function separately 
     // is causing some grief when re-opening the model!?
     (name:string)
-    (input:Variable) : Function =
+    (input:VarOrFun) =
 
-    let input : Variable =
-        if (input.Shape.Rank <> 1)
+    let input =
+        if (input.Variable.Shape.Rank <> 1)
         then
-            let newDim = input.Shape.Dimensions |> Seq.reduce(*)
-            new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
+            let newDim = input.Variable.Shape.Dimensions |> Seq.reduce(*)
+            new Variable(CNTKLib.Reshape(input.Variable, shape [ newDim ]))
+            |> Var
         else input
 
     FullyConnectedLinearLayer(input, outputDim, name, device)
@@ -73,19 +74,22 @@ let scalingFactor = float32 (1./255.)
 
 let device = DeviceDescriptor.CPUDevice
 
-let scale<'T> (device:DeviceDescriptor) (scalar:'T) input =
-    CNTKLib.ElementTimes(Constant.Scalar<'T>(scalar, device),input)
+let scale<'T> (device:DeviceDescriptor) (scalar:'T) (input:VarOrFun) =
+    CNTKLib.ElementTimes(
+        Constant.Scalar<'T>(scalar, device),
+        input.Variable
+        )
+    |> Fun
 
-let ReLU = CNTKLib.ReLU
+let ReLU (x:VarOrFun) = CNTKLib.ReLU (x.Variable) |> Fun
 
 let funcToVar (f:Function) = new Variable(f)
 
 
 let classifierOutput = 
-    input
+    Var input
     |> scale device scalingFactor
     // 28x28x1 -> 14x14x4
-    |> funcToVar
     |> Conv2D.convolution
         device
         { 
@@ -93,7 +97,6 @@ let classifierOutput =
             InputChannels = 1
             OutputFeatureMap = 4
         }
-    |> funcToVar
     |> ReLU
     |> funcToVar
     |> Conv2D.pooling
