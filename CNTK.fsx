@@ -53,6 +53,19 @@ type VarOrFun =
     static member ( *.) (left:VarOrFun,right:VarOrFun) =
         CNTKLib.ElementTimes (left.Variable, right.Variable) |> Fun
 
+type CntkComputation = | CNTK of (DeviceDescriptor -> VarOrFun)
+
+type CntkBuilder() = 
+  member x.Return(v) = CNTK (fun _ -> v)
+  member x.Bind(CNTK a, f) = 
+      CNTK (fun d -> 
+        let aval = a d
+        let (CNTK bf) = f aval
+        bf d)
+
+let cntk = CntkBuilder()
+
+
 let crossEntropyWithSoftmax (predicted:VarOrFun,actual:VarOrFun) = 
     CNTKLib.CrossEntropyWithSoftmax(predicted.Variable, actual.Variable)
 let classificationError (predicted:VarOrFun,actual:VarOrFun) = 
@@ -137,11 +150,11 @@ let dataMap xs =
     let dict = Dictionary<Variable,Value>()
     xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
 
-type Activation = 
-    | None
-    | ReLU
-    | Sigmoid
-    | Tanh
+// type Activation = 
+//     | None
+//     | ReLU
+//     | Sigmoid
+//     | Tanh
 
 let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     minibatchValues 
