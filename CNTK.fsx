@@ -35,7 +35,66 @@ open CNTK
 
 // utilities
 
+type Shape = NDShape
 let shape (dims:int seq) = NDShape.CreateNDShape dims
+
+type Model = 
+    | Input of Variable
+    | Param of Shape
+    | Add of Model * Model
+    | Prod of Model * Model
+    | Named of string * Model
+    static member (+) (left:Model,right:Model) = Add(left,right)
+    static member (*) (left:Model,right:Model) = Prod(left,right)
+    
+// let named name model = Named(name,model)
+// let model = (Input [28;28] * Param [28;28]) + Param [28] |> named "MODEL"
+// let device = DeviceDescriptor.CPUDevice
+
+let variable v = new Variable(v)
+
+type VorF = 
+    | V of Variable 
+    | F of Function
+    member this.ToVar =
+        match this with
+        | V(v) -> v
+        | F(f) -> new Variable(f)
+    member this.ToFun =
+        match this with
+        | V(v) -> v.ToFunction()
+        | F(f) -> f
+
+let buildFor (device:DeviceDescriptor) (model:Model) =
+
+    let rec build (name:string option) (model:Model)  =
+        match model with
+        | Named(name,model) ->
+            build (Some name) model
+        | Input(inputVariable) -> V(inputVariable)
+            // match name with
+            // | None -> Variable.InputVariable(s, DataType.Float)
+            // | Some(name) -> Variable.InputVariable(s, DataType.Float, name)
+        | Param(s) ->
+            match name with
+            | None -> V(new Parameter(s, DataType.Float, 0.0, device))
+            | Some(name) -> V(new Parameter(s, DataType.Float, 0.0, device, name))
+        | Add(left,right) ->
+            let left = build None left
+            let right = build None right
+            match name with
+            | None -> F(CNTKLib.Plus(left.ToVar,right.ToVar))
+            | Some(name) -> F(CNTKLib.Plus(left.ToVar,right.ToVar,name))
+        | Prod(left,right) ->
+            let left = build None left
+            let right = build None right
+            match name with
+            | None -> F(CNTKLib.Times(left.ToVar,right.ToVar))
+            | Some(name) -> F(CNTKLib.Times(left.ToVar,right.ToVar,name))
+    
+    build None model
+
+let named name model = Named(name,model)
 
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
@@ -44,13 +103,6 @@ let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) =
 let dataMap xs = 
     let dict = Dictionary<Variable,Value>()
     xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
-
-type Activation = 
-    | None
-    | ReLU
-    | Sigmoid
-    | Tanh
-
 
 type TrainingMiniBatchSummary = {
     Loss:float
