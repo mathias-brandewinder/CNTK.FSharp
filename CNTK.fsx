@@ -38,6 +38,26 @@ open CNTK
 type Shape = NDShape
 let shape (dims:int seq) = NDShape.CreateNDShape dims
 
+type GlorotParameters = {
+        Scale:float
+        OutputRank:int
+        FilterRank:int
+        Seed:int
+    }
+let defaultGlorotParams = {
+    Scale = float CNTKLib.DefaultParamInitScale
+    OutputRank = CNTKLib.SentinelValueForInferParamInitRank
+    FilterRank = CNTKLib.SentinelValueForInferParamInitRank
+    Seed = 1
+    }
+
+type Init = 
+    | GlorotUniform of GlorotParameters
+
+type Initialization = 
+    | Value of float
+    | Initializer of Init
+
 type Model = 
     | Input of Variable
     | Param of Shape
@@ -46,10 +66,6 @@ type Model =
     | Named of string * Model
     static member (+) (left:Model,right:Model) = Add(left,right)
     static member (*) (left:Model,right:Model) = Prod(left,right)
-    
-// let named name model = Named(name,model)
-// let model = (Input [28;28] * Param [28;28]) + Param [28] |> named "MODEL"
-// let device = DeviceDescriptor.CPUDevice
 
 let variable v = new Variable(v)
 
@@ -72,10 +88,7 @@ let buildFor (device:DeviceDescriptor) (model:Model) =
         | Named(name,model) ->
             build (Some name) model
         | Input(inputVariable) -> V(inputVariable)
-            // match name with
-            // | None -> Variable.InputVariable(s, DataType.Float)
-            // | Some(name) -> Variable.InputVariable(s, DataType.Float, name)
-        | Param(s) ->
+        | Param(s) ->            
             match name with
             | None -> V(new Parameter(s, DataType.Float, 0.0, device))
             | Some(name) -> V(new Parameter(s, DataType.Float, 0.0, device, name))
@@ -95,7 +108,19 @@ let buildFor (device:DeviceDescriptor) (model:Model) =
     build None model
 
 let named name model = Named(name,model)
-
+let rec dim (model:Model) =
+    match model with
+    | Input(v) -> v.Shape
+    | Param(s) -> s
+    | Add(left,right) -> 
+        // could add check, dims should match
+        dim left
+    | Prod(left,right) ->
+        let first = (dim left).Dimensions |> Seq.head
+        let second = (dim right).Dimensions |> Seq.last
+        shape [ first; second ]
+    | Named(_,model) -> dim model
+    
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
     dict

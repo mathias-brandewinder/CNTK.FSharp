@@ -66,16 +66,21 @@ let GenerateValueData(sampleSize:int, inputDim:int, numOutputClasses:int, device
 let inputDim = 3
 let numOutputClasses = 2
 
-let linearModel input =    
-    let weights = Param (shape [ numOutputClasses; inputDim ]) |> named "w"
-    let bias = Param (shape [ numOutputClasses ]) |> named "b"
+let linearModel outputDim input =
+    let inputDim = (dim input).[0]
+    let weights = Param (shape [ outputDim; inputDim ]) |> named "w"
+    let bias = Param (shape [ outputDim ]) |> named "b"
     (weights * input) + bias
 
 let device = DeviceDescriptor.CPUDevice
 let featureVariable = Variable.InputVariable(shape [inputDim], DataType.Float)
 let labelVariable = Variable.InputVariable (shape [ numOutputClasses ], DataType.Float)
 
-let classifier = linearModel (Input featureVariable) |> buildFor device |> fun x -> x.ToFun
+let classifier = 
+    Input featureVariable 
+    |> linearModel numOutputClasses 
+    |> buildFor device 
+    |> fun x -> x.ToFun
 
 
 let loss = CNTKLib.CrossEntropyWithSoftmax(variable classifier, labelVariable)
