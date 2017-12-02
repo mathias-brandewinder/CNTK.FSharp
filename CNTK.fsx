@@ -108,6 +108,7 @@ let buildFor (device:DeviceDescriptor) (model:Model) =
     build None model
 
 let named name model = Named(name,model)
+
 let rec dim (model:Model) =
     match model with
     | Input(v) -> v.Shape
@@ -121,6 +122,39 @@ let rec dim (model:Model) =
         shape [ first; second ]
     | Named(_,model) -> dim model
     
+type Evaluation = 
+    | CrossEntropyWithSoftmax
+    | ClassificationError
+
+type Predictor = Variable -> Model
+
+let trainerOn (device:DeviceDescriptor) (features:Variable,labels:Variable,model:Predictor,loss:Evaluation,eval:Evaluation) =
+    
+    let classifier = 
+        model features 
+        |> buildFor device
+        |> fun x -> x.ToFun
+
+    let loss = 
+        match loss with
+        | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(variable classifier, labels)
+        | ClassificationError ->  CNTKLib.ClassificationError(variable classifier, labels)
+
+    let eval = 
+        match eval with
+        | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(variable classifier, labels)
+        | ClassificationError ->  CNTKLib.ClassificationError(variable classifier, labels)
+
+    // this should be an argument
+    let learningRatePerSample = new TrainingParameterScheduleDouble(0.02, uint32 1) 
+    let parameterLearners =
+        ResizeArray<Learner>(
+            [ 
+                Learner.SGDLearner(classifier.Parameters(), learningRatePerSample) 
+            ])
+
+    Trainer.CreateTrainer(classifier, loss, eval, parameterLearners)
+
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
     dict

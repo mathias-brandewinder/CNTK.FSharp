@@ -72,29 +72,13 @@ let linearModel outputDim input =
     let bias = Param (shape [ outputDim ]) |> named "b"
     (weights * input) + bias
 
-let device = DeviceDescriptor.CPUDevice
 let featureVariable = Variable.InputVariable(shape [inputDim], DataType.Float)
 let labelVariable = Variable.InputVariable (shape [ numOutputClasses ], DataType.Float)
+ 
+let predictor = fun (v:Variable) -> Input v |> linearModel numOutputClasses
 
-let classifier = 
-    Input featureVariable 
-    |> linearModel numOutputClasses 
-    |> buildFor device 
-    |> fun x -> x.ToFun
-
-
-let loss = CNTKLib.CrossEntropyWithSoftmax(variable classifier, labelVariable)
-let evalError = CNTKLib.ClassificationError(variable classifier, labelVariable)
-
-let learningRatePerSample = new TrainingParameterScheduleDouble(0.02, uint32 1)
-
-let parameterLearners =
-    ResizeArray<Learner>(
-        [ 
-            Learner.SGDLearner(classifier.Parameters(), learningRatePerSample) 
-        ])
-      
-let trainer = Trainer.CreateTrainer(classifier, loss, evalError, parameterLearners)
+let device = DeviceDescriptor.CPUDevice
+let trainer = trainerOn device (featureVariable,labelVariable,predictor,CrossEntropyWithSoftmax,ClassificationError)
 
 let minibatchSize = 64
 let numMinibatchesToTrain = 1000
