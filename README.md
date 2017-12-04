@@ -1,13 +1,15 @@
 # CNTK.FSharp
 
-Status: experimental
+## experiment-interpreter branch
 
-Goal: provide F# utilities to make the CNTK .NET API pleasant to use from the F# scripting environment
+Goal: explore modelling [CNTK expressions using a DU wrapper](https://github.com/mathias-brandewinder/CNTK.FSharp/blob/experiment-interpreter/CNTK.fsx#L61-L76).  
 
-Plan: as a first step, focus on replicating the 
-[existing C# examples](https://github.com/Microsoft/CNTK/tree/master/Examples/TrainingCSharp), 
-to understand better what works and what doesn't. 
+- Replicated Logistic and a good part of MNIST-MLP.
+- Attempted to wrap the construction of a Trainer, passing in loss and eval functions as a DU marker, 
+and returning a ready-to-train Trainer.
 
-Contributing: given the very early stage of the project, I plan on working on experimental branches first, 
-and slowly integrate ideas in master. Ideally, if you have ideas, submit them as an issue, linking to your 
-branch, so we can start a discussion!
+Conclusions:  
+- Requires re-implementing how shapes / dimensions are transformed by functions
+- Enables defining a computation graph independently from the device it will run on
+- Enables deferring how to name Variables/Functions
+- Not sure how to handle Scalars, in particular for dimensions.
