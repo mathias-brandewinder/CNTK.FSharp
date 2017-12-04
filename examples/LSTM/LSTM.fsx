@@ -5,7 +5,6 @@ https://github.com/Microsoft/CNTK/master/Examples/TrainingCSharp/Common/LSTMSequ
 open System
 open System.IO
 open System.Collections.Generic
-open CNTK
 
 #load "../../CNTK.fsx"
 open CNTK
