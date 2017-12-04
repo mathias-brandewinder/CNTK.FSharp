@@ -68,8 +68,8 @@ let numOutputClasses = 2
 
 let linearModel outputDim input =
     let inputDim = (dim input).[0]
-    let weights = Param (shape [ outputDim; inputDim ]) |> named "w"
-    let bias = Param (shape [ outputDim ]) |> named "b"
+    let weights = Param (shape [ outputDim; inputDim ], Value 1.0) |> named "w"
+    let bias = Param (shape [ outputDim ], Value 0.0) |> named "b"
     (weights * input) + bias
 
 let featureVariable = Variable.InputVariable(shape [inputDim], DataType.Float)
@@ -78,7 +78,7 @@ let labelVariable = Variable.InputVariable (shape [ numOutputClasses ], DataType
 let predictor = fun (v:Variable) -> Input v |> linearModel numOutputClasses
 
 let device = DeviceDescriptor.CPUDevice
-let trainer = trainerOn device (featureVariable,labelVariable,predictor,CrossEntropyWithSoftmax,ClassificationError)
+let trainer, _ = trainerOn device (featureVariable,labelVariable,predictor,CrossEntropyWithSoftmax,ClassificationError)
 
 let minibatchSize = 64
 let numMinibatchesToTrain = 1000

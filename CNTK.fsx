@@ -59,10 +59,18 @@ type Initialization =
     | Initializer of Init
 
 type Model = 
+    // inputs
     | Input of Variable
-    | Param of Shape
+    | Param of Shape * Initialization
+    // basic operators
     | Add of Model * Model
     | Prod of Model * Model
+    | Reshape of Model * Shape
+    // built-in functions
+    | ReLU of Model
+    | Sigmoid of Model
+    | Tanh of Model
+    // naming of blocks
     | Named of string * Model
     static member (+) (left:Model,right:Model) = Add(left,right)
     static member (*) (left:Model,right:Model) = Prod(left,right)
@@ -88,10 +96,36 @@ let buildFor (device:DeviceDescriptor) (model:Model) =
         | Named(name,model) ->
             build (Some name) model
         | Input(inputVariable) -> V(inputVariable)
-        | Param(s) ->            
+        | Param(s,init) ->   
             match name with
-            | None -> V(new Parameter(s, DataType.Float, 0.0, device))
-            | Some(name) -> V(new Parameter(s, DataType.Float, 0.0, device, name))
+            | None -> 
+                match init with
+                | Value(v) -> V(new Parameter(s, DataType.Float, v, device))
+                | Initializer(f) -> 
+                    let initializer = 
+                        match f with
+                        | GlorotUniform (glorotParams) -> 
+                            CNTKLib.GlorotUniformInitializer(
+                                glorotParams.Scale,
+                                glorotParams.OutputRank,
+                                glorotParams.FilterRank,
+                                uint32 glorotParams.Seed
+                                )
+                    V(new Parameter(s, DataType.Float, initializer, device))
+            | Some(name) -> 
+                match init with
+                | Value(v) -> V(new Parameter(s, DataType.Float, v, device, name))
+                | Initializer(f) -> 
+                    let initializer = 
+                        match f with
+                        | GlorotUniform (glorotParams) -> 
+                            CNTKLib.GlorotUniformInitializer(
+                                glorotParams.Scale,
+                                glorotParams.OutputRank,
+                                glorotParams.FilterRank,
+                                uint32 glorotParams.Seed
+                                )
+                    V(new Parameter(s, DataType.Float, initializer, device, name))
         | Add(left,right) ->
             let left = build None left
             let right = build None right
@@ -104,6 +138,18 @@ let buildFor (device:DeviceDescriptor) (model:Model) =
             match name with
             | None -> F(CNTKLib.Times(left.ToVar,right.ToVar))
             | Some(name) -> F(CNTKLib.Times(left.ToVar,right.ToVar,name))
+        | Reshape(model,shape) ->
+            let model = build None model
+            F(CNTKLib.Reshape(model.ToVar,shape))
+        | ReLU(model) -> 
+            let model = build None model
+            F(CNTKLib.ReLU(model.ToVar))
+        | Sigmoid(model) -> 
+            let model = build None model
+            F(CNTKLib.Sigmoid(model.ToVar))
+        | Tanh(model) ->
+            let model = build None model
+            F(CNTKLib.Tanh(model.ToVar))           
     
     build None model
 
@@ -112,7 +158,7 @@ let named name model = Named(name,model)
 let rec dim (model:Model) =
     match model with
     | Input(v) -> v.Shape
-    | Param(s) -> s
+    | Param(s,_) -> s
     | Add(left,right) -> 
         // could add check, dims should match
         dim left
@@ -120,8 +166,16 @@ let rec dim (model:Model) =
         let first = (dim left).Dimensions |> Seq.head
         let second = (dim right).Dimensions |> Seq.last
         shape [ first; second ]
+    | Reshape(_, s) -> s
+    | ReLU(model) -> dim model
+    | Sigmoid(model) -> dim model
+    | Tanh(model) -> dim model
     | Named(_,model) -> dim model
     
+// let variable = Variable.InputVariable(shape [1;2;3],DataType.Float)
+// let result = CNTKLib.Tanh(variable)
+// (result.Output).Shape
+
 type Evaluation = 
     | CrossEntropyWithSoftmax
     | ClassificationError
@@ -153,7 +207,7 @@ let trainerOn (device:DeviceDescriptor) (features:Variable,labels:Variable,model
                 Learner.SGDLearner(classifier.Parameters(), learningRatePerSample) 
             ])
 
-    Trainer.CreateTrainer(classifier, loss, eval, parameterLearners)
+    Trainer.CreateTrainer(classifier, loss, eval, parameterLearners), classifier
 
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
