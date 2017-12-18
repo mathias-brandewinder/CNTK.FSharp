@@ -114,3 +114,5 @@ for minibatchCount in 1 .. (numMinibatchesToTrain) do
     trainer.TrainMinibatch(batch, device) |> ignore
             
     report minibatchCount |> printer
+
+classifierOutput |> Debug.valueAt [ 1.0f; 2.0f;  3.0f] 

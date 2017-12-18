@@ -88,3 +88,44 @@ let printer =
         printf "Average Eval: %.3f " (report.Evaluation)
         printfn ""
         )
+
+module Debug = 
+
+    let debugDevice = DeviceDescriptor.CPUDevice
+
+    let valueAt<'T> (value:'T seq) (f:Function) =
+
+        let input = f.Inputs |> Seq.find (fun arg -> arg.IsInput)
+        let inputValue = Value.CreateBatch(input.Shape, value, debugDevice)
+        let output = f.Output
+        let inputMap = 
+            let map = Dictionary<Variable,Value>()
+            map.Add(input,inputValue)
+            map
+        let outputMap =
+            let map = Dictionary<Variable,Value>()
+            map.Add(output, null)
+            map
+        f.Evaluate(inputMap,outputMap,debugDevice)
+        outputMap.[output].GetDenseData<'T>(output) 
+        |> Seq.map (fun x -> x |> Seq.toArray)
+        |> Seq.toArray
+
+    // TODO: fix this, not quite working
+    let valueOf (name:string) (f:Function) =
+        let param = 
+            f.Inputs 
+            |> Seq.tryFind (fun arg -> arg.Name = name)
+
+        param
+        |> Option.map (fun p ->
+            let inputMap = Dictionary<Variable,Value>()
+            let outputMap =
+                let map = Dictionary<Variable,Value>()
+                map.Add(p, null)
+                map
+            f.Evaluate(inputMap,outputMap,debugDevice)
+            outputMap.[p].GetDenseData<float>(p) 
+            |> Seq.map (fun x -> x |> Seq.toArray)
+            |> Seq.toArray
+            )
