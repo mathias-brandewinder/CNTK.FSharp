@@ -35,6 +35,8 @@ open CNTK
 
 // utilities
 
+let shape (dims:int seq) = NDShape.CreateNDShape dims
+
 type VarOrFun =
     | Var of Variable
     | Fun of Function
@@ -55,23 +57,68 @@ type VarOrFun =
 
 type CntkComputation = | CNTK of (DeviceDescriptor -> VarOrFun)
 
-type CntkBuilder() = 
-  member x.Return(v) = CNTK (fun _ -> v)
-  member x.Bind(CNTK a, f) = 
-      CNTK (fun d -> 
-        let aval = a d
-        let (CNTK bf) = f aval
-        bf d)
+let OnDevice (device:DeviceDescriptor) x = 
+    x |> function | CNTK(f) -> f device
+
+type CntkBuilder () = 
+    member x.Return(v) = CNTK (fun _ -> v)
+    member x.Bind(CNTK a, f) = 
+        CNTK (fun d -> 
+            let aval = a d
+            let (CNTK bf) = f aval
+            bf d)
 
 let cntk = CntkBuilder()
 
+type Param () =
+    static member create (pshape:int seq, dataType:DataType, init:float, name:string) =
+        CNTK(
+            fun (device : DeviceDescriptor) -> 
+                Var(new Parameter(shape pshape, dataType, init, device, name))
+            )
+    static member create (pshape:int seq, dataType:DataType, init:float) =
+        CNTK(
+            fun (device : DeviceDescriptor) -> 
+                Var(new Parameter(shape pshape, dataType, init, device))
+            )
+
+module Layer = 
+    
+    let scale<'T> (scalar:'T) (input:VarOrFun) =
+        CNTK(fun device ->
+            Fun(
+                CNTKLib.ElementTimes(
+                    Constant.Scalar<'T>(scalar, device),
+                    input.Variable
+                    )
+                )
+            )
+
+    let linear = 
+        fun (outputDim:int) ->
+            fun (input:VarOrFun) ->
+                cntk {
+                    let input =
+                        if (input.Variable.Shape.Rank <> 1)
+                        then
+                            let newDim = input.Variable.Shape.Dimensions |> Seq.reduce (*)
+                            new Variable(CNTKLib.Reshape(input.Variable, shape [ newDim ]))
+                            |> Var
+                        else input
+
+                    let inputDim = input.Variable.Shape.[0]
+
+                    let! weights = Param.create ([ outputDim; inputDim ], DataType.Float, 1.0, "w")
+                    let! bias = Param.create ([ outputDim ], DataType.Float, 0.0, "b")
+                    
+                    return (weights * input) + bias                
+                }
 
 let crossEntropyWithSoftmax (predicted:VarOrFun,actual:VarOrFun) = 
     CNTKLib.CrossEntropyWithSoftmax(predicted.Variable, actual.Variable)
 let classificationError (predicted:VarOrFun,actual:VarOrFun) = 
     CNTKLib.ClassificationError(predicted.Variable, actual.Variable)
       
-let shape (dims:int seq) = NDShape.CreateNDShape dims
 
 [<RequireQualifiedAccess>]
 module Conv2D = 
@@ -149,12 +196,6 @@ let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) =
 let dataMap xs = 
     let dict = Dictionary<Variable,Value>()
     xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
-
-// type Activation = 
-//     | None
-//     | ReLU
-//     | Sigmoid
-//     | Tanh
 
 let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     minibatchValues 

@@ -11,19 +11,6 @@ open CNTK
 open System
 open System.Collections.Generic
 
-// utility: create a linear combination
-let linearModel 
-    (device:DeviceDescriptor)
-    (outputDim:int)
-    (input:VarOrFun) =
-
-        let inputDim = input.Variable.Shape.[0]
-
-        let weights = new Parameter(shape [ outputDim; inputDim ], DataType.Float, 1.0, device, "w")
-        let bias = new Parameter(shape [ outputDim ], DataType.Float, 0.0, device, "b")
-        
-        (Var weights * input) + Var bias
-
 // Creating a synthetic dataset
 
 let generateGaussianNoise (random:Random) (mean, stdDev) =
@@ -80,7 +67,10 @@ let device = DeviceDescriptor.CPUDevice
 let featureVariable = Variable.InputVariable(shape[inputDim], DataType.Float) |> Var
 let labelVariable = Variable.InputVariable(shape[numOutputClasses], DataType.Float) |> Var
 
-let classifierOutput = featureVariable |> linearModel device numOutputClasses
+let classifierOutput = 
+    featureVariable 
+    |> Layer.linear numOutputClasses
+    |> OnDevice device
 
 let loss = crossEntropyWithSoftmax (classifierOutput,labelVariable)
 let evalError = classificationError (classifierOutput,labelVariable)
@@ -115,3 +105,4 @@ for minibatchCount in 1 .. (numMinibatchesToTrain) do
     trainer.TrainMinibatch(batch, device) |> ignore
             
     report minibatchCount |> printer
+    
