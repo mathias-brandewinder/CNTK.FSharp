@@ -37,6 +37,50 @@ open CNTK
 
 let shape (dims:int seq) = NDShape.CreateNDShape dims
 
+type Layer = DeviceDescriptor -> Variable -> Function
+
+[<RequireQualifiedAccess>]
+module Layers =
+
+    let stack (next:Layer) (curr:Layer) : Layer =
+        fun device ->
+            fun variable ->
+                let intermediate = new Variable(curr device variable)
+                next device intermediate
+
+    // TODO naming
+    let dense (outputDim:int) : Layer =
+        fun device ->
+            fun input ->
+
+                let input : Variable =
+                    if (input.Shape.Rank <> 1)
+                    then
+                        let newDim = input.Shape.Dimensions |> Seq.reduce (*)
+                        new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
+                    else input
+
+                let inputDim = input.Shape.[0]
+
+                let timesParam = 
+                    new Parameter(
+                        shape [outputDim; inputDim], 
+                        DataType.Float,
+                        CNTKLib.GlorotUniformInitializer(
+                            float CNTKLib.DefaultParamInitScale,
+                            CNTKLib.SentinelValueForInferParamInitRank,
+                            CNTKLib.SentinelValueForInferParamInitRank, 
+                            uint32 1),
+                        device, 
+                        "timesParam")
+
+                let timesFunction = 
+                    new Variable(CNTKLib.Times(timesParam, input, "times"))
+
+                let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
+                CNTKLib.Plus(plusParam, timesFunction)
+
+
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
     dict

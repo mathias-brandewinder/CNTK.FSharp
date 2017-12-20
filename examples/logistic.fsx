@@ -66,34 +66,61 @@ let GenerateValueData(sampleSize:int, inputDim:int, numOutputClasses:int, device
 let inputDim = 3
 let numOutputClasses = 2
 
-let device = DeviceDescriptor.CPUDevice
+
+let predictor : Layer = Layers.dense numOutputClasses
+
+type Loss = 
+    | CrossEntropyWithSoftmax
+    | ClassificationError
+
+type Specification = {
+    Features: Variable
+    Labels: Variable
+    Model: Layer
+    Loss: Loss
+    Eval: Loss
+    }
 
 let featureVariable = Variable.InputVariable(shape[inputDim], DataType.Float)
 let labelVariable = Variable.InputVariable(shape[numOutputClasses], DataType.Float)
 
-let createLinearModel(input:Variable, outputDim:int, device:DeviceDescriptor) =
-        
-    let inputDim = input.Shape.[0]
+let specification = {
+    Features = featureVariable
+    Labels = labelVariable
+    Model = predictor
+    Loss = CrossEntropyWithSoftmax
+    Eval = ClassificationError
+    }
 
-    let weights = new Parameter(shape [ outputDim; inputDim ], DataType.Float, 1.0, device, "w")
-    let bias = new Parameter(shape [ outputDim ], DataType.Float, 0.0, device, "b")
-        
-    new Variable(CNTKLib.Times(weights, input)) + bias
+let device = DeviceDescriptor.CPUDevice
 
-let classifierOutput = createLinearModel(featureVariable, numOutputClasses, device)
-let loss = CNTKLib.CrossEntropyWithSoftmax(new Variable(classifierOutput), labelVariable)
-let evalError = CNTKLib.ClassificationError(new Variable(classifierOutput), labelVariable)
+let createTrainer (device:DeviceDescriptor) (spec:Specification) =
 
-let learningRatePerSample = new TrainingParameterScheduleDouble(0.02, uint32 1)
+    let predictor = spec.Model device spec.Features
 
-let parameterLearners =
-    ResizeArray<Learner>(
-        [ 
-            Learner.SGDLearner(classifierOutput.Parameters(), learningRatePerSample) 
-        ])
+    let loss = 
+        match spec.Loss with
+        | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(new Variable(predictor), labelVariable)
+        | ClassificationError -> CNTKLib.ClassificationError(new Variable(predictor), labelVariable)
+
+    let eval = 
+        match spec.Eval with
+        | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(new Variable(predictor), labelVariable)
+        | ClassificationError -> CNTKLib.ClassificationError(new Variable(predictor), labelVariable)
+
+    let learningRatePerSample = new TrainingParameterScheduleDouble(0.02, uint32 1)
+
+    let parameterLearners =
+        ResizeArray<Learner>(
+            [ 
+                Learner.SGDLearner(predictor.Parameters(), learningRatePerSample) 
+            ])
       
-let trainer = Trainer.CreateTrainer(classifierOutput, loss, evalError, parameterLearners)
+    let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
 
+    trainer
+
+let trainer = createTrainer device specification
 let minibatchSize = 64
 let numMinibatchesToTrain = 1000
 let updatePerMinibatches = 50
@@ -115,4 +142,4 @@ for minibatchCount in 1 .. (numMinibatchesToTrain) do
             
     report minibatchCount |> printer
 
-classifierOutput |> Debug.valueAt [ 1.0f; 2.0f;  3.0f] 
+// classifierOutput |> Debug.valueAt [ 1.0f; 2.0f;  3.0f] 
