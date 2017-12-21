@@ -89,7 +89,7 @@ module Layer =
                 let intermediate = new Variable(curr device variable)
                 next device intermediate
 
-    let scaled<'T> (scalar:'T) : Computation = 
+    let scale<'T> (scalar:'T) : Computation = 
         fun device ->
             fun input ->
                 CNTKLib.ElementTimes(Constant.Scalar<'T>(scalar, device), input)

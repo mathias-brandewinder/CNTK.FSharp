@@ -28,7 +28,7 @@ let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsS
 let scalingFactor = float32 (1./255.)
 let classifierName = "classifierOutput"
 let network  =
-    Layer.scaled scalingFactor
+    Layer.scale scalingFactor
     |> Layer.stack (Convolution.conv2D 
         {    
             KernelWidth = 3 

@@ -46,7 +46,7 @@ let scalingFactor = float32 (1./255.)
 
 // need name
 let classifier = 
-    Layer.scaled scalingFactor
+    Layer.scale scalingFactor
     |> Layer.stack (Layer.dense hiddenLayerDim)
     |> Layer.stack Activation.sigmoid
     |> Layer.stack (Layer.dense numClasses)
