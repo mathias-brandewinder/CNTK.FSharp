@@ -33,11 +33,9 @@ dependencies
 #r "./packages/CNTK.CPUOnly/lib/net45/x64/Cntk.Core.Managed-2.3.dll"
 open CNTK
 
-// utilities
-
 let shape (dims:int seq) = NDShape.CreateNDShape dims
 
-type Layer = DeviceDescriptor -> Variable -> Function
+type Computation = DeviceDescriptor -> Variable -> Function
 
 type Loss = 
     | CrossEntropyWithSoftmax
@@ -56,7 +54,7 @@ type Schedule = {
 type Specification = {
     Features: Variable
     Labels: Variable
-    Model: Layer
+    Model: Computation
     Loss: Loss
     Eval: Loss
     Schedule: Schedule
@@ -83,21 +81,21 @@ let prepare (device:DeviceDescriptor) (spec:Specification) =
     predictor, trainer
 
 [<RequireQualifiedAccess>]
-module Layers =
+module Layer =
 
-    let stack (next:Layer) (curr:Layer) : Layer =
+    let stack (next:Computation) (curr:Computation) : Computation =
         fun device ->
             fun variable ->
                 let intermediate = new Variable(curr device variable)
                 next device intermediate
 
-    let scaled<'T> (scalar:'T) : Layer = 
+    let scaled<'T> (scalar:'T) : Computation = 
         fun device ->
             fun input ->
                 CNTKLib.ElementTimes(Constant.Scalar<'T>(scalar, device), input)
 
     // TODO naming
-    let dense (outputDim:int) : Layer =
+    let dense (outputDim:int) : Computation =
         fun device ->
             fun input ->
 
@@ -130,16 +128,16 @@ module Layers =
 
 [<RequireQualifiedAccess>]
 module Activation =
-    let ReLU : Layer = 
+    let ReLU : Computation = 
         fun device ->
             fun input ->
                 CNTKLib.ReLU(input)
-    let sigmoid : Layer =
+    let sigmoid : Computation =
         fun device ->
             fun input ->
                 CNTKLib.Sigmoid(input)
 
-    let tanh : Layer =
+    let tanh : Computation =
         fun device ->
             fun input ->
                 CNTKLib.Tanh(input)
@@ -153,7 +151,7 @@ module Convolution =
         InputChannels : int
         OutputFeatures : int
         }
-    let conv2D (args:Conv2D) : Layer = 
+    let conv2D (args:Conv2D) : Computation = 
         fun device ->
             fun input ->
                 let convWScale = 0.26
@@ -178,7 +176,7 @@ module Convolution =
         VerticalStride : int
         PoolingType : PoolingType
         }                
-    let pooling2D (args:Pool2D) : Layer = 
+    let pooling2D (args:Pool2D) : Computation = 
         fun device ->
             fun input ->
                 CNTKLib.Pooling(

@@ -14,8 +14,6 @@ open System.Collections.Generic
 
 // Conversion of the original C# code to an F# script
 
-// Helpers to simplify model creation from F#
-
 let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     minibatchValues 
     |> Seq.exists(fun a -> a.sweepEnd)
@@ -47,11 +45,11 @@ let hiddenLayerDim = 200
 let scalingFactor = float32 (1./255.)
 
 // need name
-let classifier : Layer = 
-    Layers.scaled scalingFactor
-    |> Layers.stack (Layers.dense hiddenLayerDim)
-    |> Layers.stack Activation.sigmoid
-    |> Layers.stack (Layers.dense numClasses)
+let classifier = 
+    Layer.scaled scalingFactor
+    |> Layer.stack (Layer.dense hiddenLayerDim)
+    |> Layer.stack Activation.sigmoid
+    |> Layer.stack (Layer.dense numClasses)
 
 let spec = {
     Features = input

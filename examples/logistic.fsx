@@ -66,7 +66,7 @@ let GenerateValueData(sampleSize:int, inputDim:int, numOutputClasses:int, device
 let inputDim = 3
 let numOutputClasses = 2
 
-let predictor : Layer = Layers.dense numOutputClasses
+let predictor : Computation = Layers.dense numOutputClasses
 
 let featureVariable = Variable.InputVariable(shape[inputDim], DataType.Float)
 let labelVariable = Variable.InputVariable(shape[numOutputClasses], DataType.Float)

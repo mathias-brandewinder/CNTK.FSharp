@@ -27,9 +27,9 @@ let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float, featureSt
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
 let scalingFactor = float32 (1./255.)
 let classifierName = "classifierOutput"
-let network : Layer =
-    Layers.scaled scalingFactor
-    |> Layers.stack (Convolution.conv2D 
+let network  =
+    Layer.scaled scalingFactor
+    |> Layer.stack (Convolution.conv2D 
         {    
             KernelWidth = 3 
             KernelHeight = 3 
@@ -37,8 +37,8 @@ let network : Layer =
             OutputFeatures = 4
         }
         )
-    |> Layers.stack Activation.ReLU
-    |> Layers.stack (Convolution.pooling2D
+    |> Layer.stack Activation.ReLU
+    |> Layer.stack (Convolution.pooling2D
         {
             PoolingType = PoolingType.Max
             WindowWidth = 3
@@ -47,7 +47,7 @@ let network : Layer =
             VerticalStride = 2
         }
         )
-    |> Layers.stack (Convolution.conv2D
+    |> Layer.stack (Convolution.conv2D
         {    
             KernelWidth = 3 
             KernelHeight = 3 
@@ -55,8 +55,8 @@ let network : Layer =
             OutputFeatures = 8
         }
         )
-    |> Layers.stack Activation.ReLU
-    |> Layers.stack (Convolution.pooling2D
+    |> Layer.stack Activation.ReLU
+    |> Layer.stack (Convolution.pooling2D
         {
             PoolingType = PoolingType.Max
             WindowWidth = 3
@@ -65,7 +65,7 @@ let network : Layer =
             VerticalStride = 2
         }
         )
-    |> Layers.stack (Layers.dense numClasses)
+    |> Layer.stack (Layer.dense numClasses)
 
 let spec = {
     Features = input
