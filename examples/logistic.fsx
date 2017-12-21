@@ -73,16 +73,29 @@ type Loss =
     | CrossEntropyWithSoftmax
     | ClassificationError
 
+let evalutation (loss:Loss) (predicted:Function,actual:Variable) =
+    match loss with
+    | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(new Variable(predicted),actual)
+    | ClassificationError -> CNTKLib.ClassificationError(new Variable(predicted),actual)
+
+type Schedule = {
+    Rate:float
+    MinibatchSize:int
+    }
+
 type Specification = {
     Features: Variable
     Labels: Variable
     Model: Layer
     Loss: Loss
     Eval: Loss
+    Schedule: Schedule
     }
 
 let featureVariable = Variable.InputVariable(shape[inputDim], DataType.Float)
 let labelVariable = Variable.InputVariable(shape[numOutputClasses], DataType.Float)
+
+let schedule = { Rate = 0.02; MinibatchSize = 1 }
 
 let specification = {
     Features = featureVariable
@@ -90,35 +103,32 @@ let specification = {
     Model = predictor
     Loss = CrossEntropyWithSoftmax
     Eval = ClassificationError
+    Schedule = schedule
     }
 
-let device = DeviceDescriptor.CPUDevice
-
-let createTrainer (device:DeviceDescriptor) (spec:Specification) =
-
-    let predictor = spec.Model device spec.Features
-
-    let loss = 
-        match spec.Loss with
-        | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(new Variable(predictor), labelVariable)
-        | ClassificationError -> CNTKLib.ClassificationError(new Variable(predictor), labelVariable)
-
-    let eval = 
-        match spec.Eval with
-        | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(new Variable(predictor), labelVariable)
-        | ClassificationError -> CNTKLib.ClassificationError(new Variable(predictor), labelVariable)
-
-    let learningRatePerSample = new TrainingParameterScheduleDouble(0.02, uint32 1)
-
+let learning (predictor:Function) (schedule:Schedule) =   
+    let learningRatePerSample = 
+        new TrainingParameterScheduleDouble(schedule.Rate, uint32 schedule.MinibatchSize)
     let parameterLearners =
         ResizeArray<Learner>(
             [ 
                 Learner.SGDLearner(predictor.Parameters(), learningRatePerSample) 
             ])
-      
-    let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
+    parameterLearners
+    
+let createTrainer (device:DeviceDescriptor) (spec:Specification) =
 
-    trainer
+    let predictor = spec.Model device spec.Features
+
+    let loss = evalutation spec.Loss (predictor,spec.Labels)
+
+    let eval = evalutation spec.Eval (predictor,spec.Labels)
+    
+    let parameterLearners = learning predictor spec.Schedule
+      
+    Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
+
+let device = DeviceDescriptor.CPUDevice
 
 let trainer = createTrainer device specification
 let minibatchSize = 64
