@@ -16,55 +16,6 @@ open System.Collections.Generic
 
 // Helpers to simplify model creation from F#
 
-let FullyConnectedLinearLayer(
-    input:Variable, 
-    outputDim:int, 
-    device:DeviceDescriptor,
-    outputName:string) : Function =
-
-    let inputDim = input.Shape.[0]
-
-    let timesParam = 
-        new Parameter(
-            shape [outputDim; inputDim], 
-            DataType.Float,
-            CNTKLib.GlorotUniformInitializer(
-                float CNTKLib.DefaultParamInitScale,
-                CNTKLib.SentinelValueForInferParamInitRank,
-                CNTKLib.SentinelValueForInferParamInitRank, 
-                uint32 1),
-            device, 
-            "timesParam")
-
-    let timesFunction = 
-        new Variable(CNTKLib.Times(timesParam, input, "times"))
-
-    let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
-    CNTKLib.Plus(plusParam, timesFunction, outputName)
-
-let Dense(
-    input:Variable, 
-    outputDim:int,
-    device:DeviceDescriptor,
-    activation:Activation, 
-    outputName:string) : Function =
-
-    let input : Variable =
-        if (input.Shape.Rank <> 1)
-        then
-            let newDim = input.Shape.Dimensions |> Seq.reduce(fun d1 d2 -> d1 * d2)
-            new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
-        else input
-
-    let fullyConnected : Function = 
-        FullyConnectedLinearLayer(input, outputDim, device, outputName)
-    
-    match activation with
-    | Activation.None -> fullyConnected
-    | Activation.ReLU -> CNTKLib.ReLU(new Variable(fullyConnected))
-    | Activation.Sigmoid -> CNTKLib.Sigmoid(new Variable(fullyConnected))
-    | Activation.Tanh -> CNTKLib.Tanh(new Variable(fullyConnected))
-
 let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     minibatchValues 
     |> Seq.exists(fun a -> a.sweepEnd)
@@ -90,29 +41,28 @@ let streamConfigurations =
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTMLP.model")
 
 let input = CNTKLib.InputVariable(shape [ imageSize ], DataType.Float, featureStreamName)
+let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
+
 let hiddenLayerDim = 200
 let scalingFactor = float32 (1./255.)
 
+// need name
+let classifier : Layer = 
+    Layers.scaled scalingFactor
+    |> Layers.stack (Layers.dense hiddenLayerDim)
+    |> Layers.stack Activation.sigmoid
+    |> Layers.stack (Layers.dense numClasses)
+
+let spec = {
+    Features = input
+    Labels = labels
+    Model = classifier
+    Loss = CrossEntropyWithSoftmax
+    Eval = ClassificationError
+    Schedule = { Rate = 0.003125; MinibatchSize = 1}
+    }
+
 let device = DeviceDescriptor.CPUDevice
-
-let scaledInput = CNTKLib.ElementTimes(Constant.Scalar<float32>(scalingFactor, device), input)
-
-let CreateMLPClassifier(
-    device:DeviceDescriptor, 
-    numOutputClasses:int,
-    hiddenLayerDim:int,
-    scaledInput:Function,
-    classifierName:string) =
-
-        let dense1:Function = Dense(new Variable(scaledInput), hiddenLayerDim, device, Activation.Sigmoid, "");
-        let classifierOutput:Function = Dense(new Variable(dense1), numOutputClasses, device, Activation.None, classifierName);
-        classifierOutput
-
-let classifierOutput = CreateMLPClassifier(device, numClasses, hiddenLayerDim, scaledInput, classifierName)
-
-let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
-let trainingLoss = CNTKLib.CrossEntropyWithSoftmax(new Variable(classifierOutput), labels, "lossFunction")
-let prediction = CNTKLib.ClassificationError(new Variable(classifierOutput), labels, "classificationError")
 
 let minibatchSource = 
     MinibatchSource.TextFormatMinibatchSource(
@@ -123,18 +73,7 @@ let minibatchSource =
 let featureStreamInfo = minibatchSource.StreamInfo(featureStreamName)
 let labelStreamInfo = minibatchSource.StreamInfo(labelsStreamName)
 
-// set per sample learning rate
-let learningRatePerSample : CNTK.TrainingParameterScheduleDouble = 
-    new CNTK.TrainingParameterScheduleDouble(0.003125, uint32 1)
-
-let parameterLearners = 
-    ResizeArray<Learner>(
-        [
-            Learner.SGDLearner(classifierOutput.Parameters(), learningRatePerSample)
-        ]
-        )
-
-let trainer = Trainer.CreateTrainer(classifierOutput, trainingLoss, prediction, parameterLearners)
+let (predictor,trainer) = prepare device spec
 
 let minibatchSize = uint32 64
 let outputFrequencyInMinibatches = 20
@@ -142,7 +81,7 @@ let outputFrequencyInMinibatches = 20
 let learn epochs =
 
     let report = progress (trainer, outputFrequencyInMinibatches)
-
+    
     let rec learnEpoch (step,epoch) = 
 
         if epoch <= 0
@@ -179,7 +118,8 @@ let learn epochs =
 let epochs = 5
 learn epochs
 
-classifierOutput.Save(modelFile)
+
+predictor.Save(modelFile)
 
 // validate the model
 let minibatchSourceNewModel = 

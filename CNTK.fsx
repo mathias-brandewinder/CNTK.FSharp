@@ -39,6 +39,49 @@ let shape (dims:int seq) = NDShape.CreateNDShape dims
 
 type Layer = DeviceDescriptor -> Variable -> Function
 
+type Loss = 
+    | CrossEntropyWithSoftmax
+    | ClassificationError
+
+let evalutation (loss:Loss) (predicted:Function,actual:Variable) =
+    match loss with
+    | CrossEntropyWithSoftmax -> CNTKLib.CrossEntropyWithSoftmax(new Variable(predicted),actual)
+    | ClassificationError -> CNTKLib.ClassificationError(new Variable(predicted),actual)
+
+type Schedule = {
+    Rate:float
+    MinibatchSize:int
+    }
+
+type Specification = {
+    Features: Variable
+    Labels: Variable
+    Model: Layer
+    Loss: Loss
+    Eval: Loss
+    Schedule: Schedule
+    }
+
+let learning (predictor:Function) (schedule:Schedule) =   
+    let learningRatePerSample = 
+        new TrainingParameterScheduleDouble(schedule.Rate, uint32 schedule.MinibatchSize)
+    let parameterLearners =
+        ResizeArray<Learner>(
+            [ 
+                Learner.SGDLearner(predictor.Parameters(), learningRatePerSample) 
+            ])
+    parameterLearners
+
+let prepare (device:DeviceDescriptor) (spec:Specification) =
+    
+    let predictor = spec.Model device spec.Features
+    let loss = evalutation spec.Loss (predictor,spec.Labels)
+    let eval = evalutation spec.Eval (predictor,spec.Labels)   
+    let parameterLearners = learning predictor spec.Schedule     
+    let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
+    
+    predictor, trainer
+
 [<RequireQualifiedAccess>]
 module Layers =
 
@@ -47,6 +90,11 @@ module Layers =
             fun variable ->
                 let intermediate = new Variable(curr device variable)
                 next device intermediate
+
+    let scaled<'T> (scalar:'T) : Layer = 
+        fun device ->
+            fun input ->
+                CNTKLib.ElementTimes(Constant.Scalar<'T>(scalar, device), input)
 
     // TODO naming
     let dense (outputDim:int) : Layer =
@@ -80,6 +128,21 @@ module Layers =
                 let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
                 CNTKLib.Plus(plusParam, timesFunction)
 
+[<RequireQualifiedAccess>]
+module Activation =
+    let ReLU : Layer = 
+        fun device ->
+            fun input ->
+                CNTKLib.ReLU(input)
+    let sigmoid : Layer =
+        fun device ->
+            fun input ->
+                CNTKLib.Sigmoid(input)
+
+    let tanh : Layer =
+        fun device ->
+            fun input ->
+                CNTKLib.Tanh(input)
 
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
@@ -88,13 +151,6 @@ let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) =
 let dataMap xs = 
     let dict = Dictionary<Variable,Value>()
     xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
-
-type Activation = 
-    | None
-    | ReLU
-    | Sigmoid
-    | Tanh
-
 
 type TrainingMiniBatchSummary = {
     Loss:float
