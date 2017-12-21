@@ -17,46 +17,6 @@ let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     minibatchValues 
     |> Seq.exists(fun a -> a.sweepEnd)
 
-type ConvolutionAgs = {
-    KernelWidth : int 
-    KernelHeight : int 
-    InputChannels : int
-    OutputFeatures : int
-    }
-let convolution (args:ConvolutionAgs) : Layer = 
-    fun device ->
-        fun input ->
-            let convWScale = 0.26
-
-            let convParams = 
-                new Parameter(
-                    shape [ args.KernelWidth; args.KernelHeight; args.InputChannels; args.OutputFeatures ], 
-                    DataType.Float,
-                    CNTKLib.GlorotUniformInitializer(convWScale, -1, 2), 
-                    device)
-
-            CNTKLib.Convolution(
-                convParams, 
-                input, 
-                shape [ 1; 1; args.InputChannels ]
-                )
-
-type PoolingArgs = {
-    WindowWidth : int
-    WindowHeight : int
-    HorizontalStride : int 
-    VerticalStride : int
-    }                
-let pooling (args:PoolingArgs) : Layer = 
-    fun device ->
-        fun input ->
-            CNTKLib.Pooling(
-                input, 
-                PoolingType.Max,
-                shape [ args.WindowWidth; args.WindowHeight ], 
-                shape [ args.HorizontalStride; args.VerticalStride ], 
-                [| true |])
-
 // definition / configuration of the network
 
 let imageSize = 28 * 28
@@ -69,7 +29,7 @@ let scalingFactor = float32 (1./255.)
 let classifierName = "classifierOutput"
 let network : Layer =
     Layers.scaled scalingFactor
-    |> Layers.stack (convolution 
+    |> Layers.stack (Convolution.conv2D 
         {    
             KernelWidth = 3 
             KernelHeight = 3 
@@ -78,15 +38,16 @@ let network : Layer =
         }
         )
     |> Layers.stack Activation.ReLU
-    |> Layers.stack (pooling
+    |> Layers.stack (Convolution.pooling2D
         {
+            PoolingType = PoolingType.Max
             WindowWidth = 3
             WindowHeight = 3
             HorizontalStride = 2 
             VerticalStride = 2
         }
         )
-    |> Layers.stack (convolution 
+    |> Layers.stack (Convolution.conv2D
         {    
             KernelWidth = 3 
             KernelHeight = 3 
@@ -95,8 +56,9 @@ let network : Layer =
         }
         )
     |> Layers.stack Activation.ReLU
-    |> Layers.stack (pooling
+    |> Layers.stack (Convolution.pooling2D
         {
+            PoolingType = PoolingType.Max
             WindowWidth = 3
             WindowHeight = 3
             HorizontalStride = 2 

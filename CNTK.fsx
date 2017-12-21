@@ -144,6 +144,49 @@ module Activation =
             fun input ->
                 CNTKLib.Tanh(input)
 
+[<RequireQualifiedAccess>]
+module Convolution =
+
+    type Conv2D = {
+        KernelWidth : int 
+        KernelHeight : int 
+        InputChannels : int
+        OutputFeatures : int
+        }
+    let conv2D (args:Conv2D) : Layer = 
+        fun device ->
+            fun input ->
+                let convWScale = 0.26
+
+                let convParams = 
+                    new Parameter(
+                        shape [ args.KernelWidth; args.KernelHeight; args.InputChannels; args.OutputFeatures ], 
+                        DataType.Float,
+                        CNTKLib.GlorotUniformInitializer(convWScale, -1, 2), 
+                        device)
+
+                CNTKLib.Convolution(
+                    convParams, 
+                    input, 
+                    shape [ 1; 1; args.InputChannels ]
+                    )
+
+    type Pool2D = {
+        WindowWidth : int
+        WindowHeight : int
+        HorizontalStride : int 
+        VerticalStride : int
+        PoolingType : PoolingType
+        }                
+    let pooling2D (args:Pool2D) : Layer = 
+        fun device ->
+            fun input ->
+                CNTKLib.Pooling(
+                    input, 
+                    args.PoolingType,
+                    shape [ args.WindowWidth; args.WindowHeight ], 
+                    shape [ args.HorizontalStride; args.VerticalStride ], 
+                    [| true |])
 let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
     dict.Add(key,value)
     dict
