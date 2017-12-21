@@ -13,71 +13,112 @@ open System.IO
 open System.Collections.Generic
 
 // Conversion of the original C# code to an F# script
-
-// Helpers to simplify model creation from F#
-
-let FullyConnectedLinearLayer(
-    input:Variable, 
-    outputDim:int, 
-    device:DeviceDescriptor,
-    outputName:string) : Function =
-
-    let inputDim = input.Shape.[0]
-
-    let timesParam = 
-        new Parameter(
-            shape [outputDim; inputDim], 
-            DataType.Float,
-            CNTKLib.GlorotUniformInitializer(
-                float CNTKLib.DefaultParamInitScale,
-                CNTKLib.SentinelValueForInferParamInitRank,
-                CNTKLib.SentinelValueForInferParamInitRank, 
-                uint32 1),
-            device, 
-            "timesParam")
-
-    let timesFunction = 
-        new Variable(CNTKLib.Times(timesParam, input, "times"))
-
-    let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
-    CNTKLib.Plus(plusParam, timesFunction, outputName)
-
-let Dense(
-    input:Variable, 
-    outputDim:int,
-    device:DeviceDescriptor,
-    activation:Activation, 
-    outputName:string) : Function =
-
-    let input : Variable =
-        if (input.Shape.Rank <> 1)
-        then
-            let newDim = input.Shape.Dimensions |> Seq.reduce(fun d1 d2 -> d1 * d2)
-            new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
-        else input
-
-    let fullyConnected : Function = 
-        FullyConnectedLinearLayer(input, outputDim, device, outputName)
-    
-    match activation with
-    | Activation.None -> fullyConnected
-    | Activation.ReLU -> CNTKLib.ReLU(new Variable(fullyConnected))
-    | Activation.Sigmoid -> CNTKLib.Sigmoid(new Variable(fullyConnected))
-    | Activation.Tanh -> CNTKLib.Tanh(new Variable(fullyConnected))
-
 let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     minibatchValues 
     |> Seq.exists(fun a -> a.sweepEnd)
 
+type ConvolutionAgs = {
+    KernelWidth : int 
+    KernelHeight : int 
+    InputChannels : int
+    OutputFeatures : int
+    }
+let convolution (args:ConvolutionAgs) : Layer = 
+    fun device ->
+        fun input ->
+            let convWScale = 0.26
+
+            let convParams = 
+                new Parameter(
+                    shape [ args.KernelWidth; args.KernelHeight; args.InputChannels; args.OutputFeatures ], 
+                    DataType.Float,
+                    CNTKLib.GlorotUniformInitializer(convWScale, -1, 2), 
+                    device)
+
+            CNTKLib.Convolution(
+                convParams, 
+                input, 
+                shape [ 1; 1; args.InputChannels ]
+                )
+
+type PoolingArgs = {
+    WindowWidth : int
+    WindowHeight : int
+    HorizontalStride : int 
+    VerticalStride : int
+    }                
+let pooling (args:PoolingArgs) : Layer = 
+    fun device ->
+        fun input ->
+            CNTKLib.Pooling(
+                input, 
+                PoolingType.Max,
+                shape [ args.WindowWidth; args.WindowHeight ], 
+                shape [ args.HorizontalStride; args.VerticalStride ], 
+                [| true |])
+
 // definition / configuration of the network
 
-let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
-
-let featureStreamName = "features"
-let labelsStreamName = "labels"
-let classifierName = "classifierOutput"
 let imageSize = 28 * 28
 let numClasses = 10
+let featureStreamName = "features"
+let labelsStreamName = "labels"
+let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float, featureStreamName)
+let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
+let scalingFactor = float32 (1./255.)
+let classifierName = "classifierOutput"
+let network : Layer =
+    Layers.scaled scalingFactor
+    |> Layers.stack (convolution 
+        {    
+            KernelWidth = 3 
+            KernelHeight = 3 
+            InputChannels = 1
+            OutputFeatures = 4
+        }
+        )
+    |> Layers.stack Activation.ReLU
+    |> Layers.stack (pooling
+        {
+            WindowWidth = 3
+            WindowHeight = 3
+            HorizontalStride = 2 
+            VerticalStride = 2
+        }
+        )
+    |> Layers.stack (convolution 
+        {    
+            KernelWidth = 3 
+            KernelHeight = 3 
+            InputChannels = 4 // matches previous conv output
+            OutputFeatures = 8
+        }
+        )
+    |> Layers.stack Activation.ReLU
+    |> Layers.stack (pooling
+        {
+            WindowWidth = 3
+            WindowHeight = 3
+            HorizontalStride = 2 
+            VerticalStride = 2
+        }
+        )
+    |> Layers.stack (Layers.dense numClasses)
+
+let spec = {
+    Features = input
+    Labels = labels
+    Model = network
+    Loss = CrossEntropyWithSoftmax
+    Eval = ClassificationError
+    Schedule = { Rate = 0.003125; MinibatchSize = 1 }
+    }
+
+let device = DeviceDescriptor.CPUDevice
+let (predictor,trainer) = prepare device spec
+
+// learning
+let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
 
 let streamConfigurations = 
     ResizeArray<StreamConfiguration>(
@@ -89,115 +130,6 @@ let streamConfigurations =
 
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
 
-let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float, featureStreamName)
-let hiddenLayerDim = 200
-let scalingFactor = float32 (1./255.)
-
-let device = DeviceDescriptor.CPUDevice
-
-let scaledInput = CNTKLib.ElementTimes(Constant.Scalar<float32>(scalingFactor, device), input)
-
-let ConvolutionWithMaxPooling(
-    features:Variable, 
-    device:DeviceDescriptor,
-    kernelWidth:int, 
-    kernelHeight:int, 
-    numInputChannels:int, 
-    outFeatureMapCount:int,
-    hStride:int, 
-    vStride:int, 
-    poolingWindowWidth:int, 
-    poolingWindowHeight:int) : Function =
-
-        // parameter initialization hyper parameter
-        let convWScale = 0.26
-
-        let convParams = 
-            new Parameter(
-                shape [ kernelWidth; kernelHeight; numInputChannels; outFeatureMapCount ], 
-                DataType.Float,
-                CNTKLib.GlorotUniformInitializer(convWScale, -1, 2), 
-                device)
-
-        let convFunction : Function = 
-            CNTKLib.ReLU(
-                new Variable(
-                    CNTKLib.Convolution(
-                        convParams, 
-                        features, 
-                        shape [ 1; 1; numInputChannels ])))
-
-        let pooling : Function = 
-            CNTKLib.Pooling(
-                new Variable(convFunction), 
-                PoolingType.Max,
-                shape [ poolingWindowWidth; poolingWindowHeight ], 
-                shape [ hStride; vStride ], 
-                [| true |])
-
-        pooling
-
-let CreateConvolutionalNeuralNetwork(
-    features:Variable,
-    outDims:int,
-    device:DeviceDescriptor, 
-    classifierName:string) : Function = 
-
-    // 28x28x1 -> 14x14x4
-    let kernelWidth1 = 3 
-    let kernelHeight1 = 3
-    let numInputChannels1 = 1 
-    let outFeatureMapCount1 = 4
-    let hStride1 = 2 
-    let vStride1 = 2
-    let poolingWindowWidth1 = 3
-    let poolingWindowHeight1 = 3
-
-    let pooling1 : Function = 
-        ConvolutionWithMaxPooling(
-            features, 
-            device, 
-            kernelWidth1, 
-            kernelHeight1,
-            numInputChannels1, 
-            outFeatureMapCount1, 
-            hStride1, 
-            vStride1, 
-            poolingWindowWidth1, 
-            poolingWindowHeight1)
-
-    // 14x14x4 -> 7x7x8
-    let kernelWidth2 = 3
-    let kernelHeight2 = 3
-    let numInputChannels2 = outFeatureMapCount1
-    let outFeatureMapCount2 = 8
-    let hStride2 = 2
-    let vStride2 = 2
-    let poolingWindowWidth2 = 3
-    let poolingWindowHeight2 = 3
-
-    let pooling2 : Function = 
-        ConvolutionWithMaxPooling(
-            new Variable(pooling1), 
-            device, 
-            kernelWidth2, 
-            kernelHeight2,
-            numInputChannels2, 
-            outFeatureMapCount2, 
-            hStride2, 
-            vStride2, 
-            poolingWindowWidth2, 
-            poolingWindowHeight2)
-
-    let denseLayer : Function = Dense(new Variable(pooling2), outDims, device, Activation.None, classifierName)
-    denseLayer
-
-let classifierOutput = CreateConvolutionalNeuralNetwork(new Variable(scaledInput), numClasses, device, classifierName)
-
-let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
-let trainingLoss = CNTKLib.CrossEntropyWithSoftmax(new Variable(classifierOutput), labels, "lossFunction")
-let prediction = CNTKLib.ClassificationError(new Variable(classifierOutput), labels, "classificationError")
-
 let minibatchSource = 
     MinibatchSource.TextFormatMinibatchSource(
         Path.Combine(ImageDataFolder, "Train_cntk_text.txt"), 
@@ -208,17 +140,6 @@ let featureStreamInfo = minibatchSource.StreamInfo(featureStreamName)
 let labelStreamInfo = minibatchSource.StreamInfo(labelsStreamName)
 
 // set per sample learning rate
-let learningRatePerSample : CNTK.TrainingParameterScheduleDouble = 
-    new CNTK.TrainingParameterScheduleDouble(0.003125, uint32 1)
-
-let parameterLearners = 
-    ResizeArray<Learner>(
-        [
-            Learner.SGDLearner(classifierOutput.Parameters(), learningRatePerSample)
-        ]
-        )
-
-let trainer = Trainer.CreateTrainer(classifierOutput, trainingLoss, prediction, parameterLearners)
 
 let minibatchSize = uint32 64
 let outputFrequencyInMinibatches = 20
@@ -263,7 +184,7 @@ let learn epochs =
 let epochs = 5
 learn epochs
 
-classifierOutput.Save(modelFile)
+predictor.Save(modelFile)
 
 // validate the model
 let minibatchSourceNewModel = 
@@ -287,9 +208,9 @@ let ValidateModelWithMinibatchSource(
         let model : Function = Function.Load(modelFile, device)
         let imageInput = model.Arguments.[0]
         let labelOutput = 
-            model.Outputs 
-            |> Seq.filter (fun o -> o.Name = outputName)
-            |> Seq.exactlyOne
+            model.Output
+            // |> Seq.filter (fun o -> o.Name = outputName)
+            // |> Seq.exactlyOne
 
         let featureStreamInfo = testMinibatchSource.StreamInfo(featureInputName)
         let labelStreamInfo = testMinibatchSource.StreamInfo(labelInputName)

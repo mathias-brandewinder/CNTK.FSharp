@@ -118,7 +118,6 @@ let learn epochs =
 let epochs = 5
 learn epochs
 
-
 predictor.Save(modelFile)
 
 // validate the model
@@ -143,9 +142,9 @@ let ValidateModelWithMinibatchSource(
         let model : Function = Function.Load(modelFile, device)
         let imageInput = model.Arguments.[0]
         let labelOutput = 
-            model.Outputs 
-            |> Seq.filter (fun o -> o.Name = outputName)
-            |> Seq.exactlyOne
+            model.Output
+            // |> Seq.filter (fun o -> o.Name = outputName)
+            // |> Seq.exactlyOne
 
         let featureStreamInfo = testMinibatchSource.StreamInfo(featureInputName)
         let labelStreamInfo = testMinibatchSource.StreamInfo(labelInputName)
