@@ -12,11 +12,6 @@ open System
 open System.IO
 open System.Collections.Generic
 
-// Conversion of the original C# code to an F# script
-let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
-    minibatchValues 
-    |> Seq.exists(fun a -> a.sweepEnd)
-
 // definition / configuration of the network
 
 let imageSize = 28 * 28
@@ -76,9 +71,6 @@ let spec = {
     Schedule = { Rate = 0.003125; MinibatchSize = 1 }
     }
 
-let device = DeviceDescriptor.CPUDevice
-let (predictor,trainer) = prepare device spec
-
 // learning
 let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
 
@@ -102,49 +94,12 @@ let featureStreamInfo = minibatchSource.StreamInfo(featureStreamName)
 let labelStreamInfo = minibatchSource.StreamInfo(labelsStreamName)
 
 // set per sample learning rate
-
-let minibatchSize = uint32 64
-let outputFrequencyInMinibatches = 20
-
-let learn epochs =
-
-    let report = progress (trainer, outputFrequencyInMinibatches)
-
-    let rec learnEpoch (step,epoch) = 
-
-        if epoch <= 0
-        // we are done
-        then ignore ()
-        else
-            let step = step + 1
-            let minibatchData = minibatchSource.GetNextMinibatch(minibatchSize, device)
-
-            let arguments : IDictionary<Variable, MinibatchData> =
-                [
-                    input, minibatchData.[featureStreamInfo]
-                    labels, minibatchData.[labelStreamInfo]
-                ]
-                |> dict
-
-            trainer.TrainMinibatch(arguments, device) |> ignore
-
-            report step |> printer
-            
-            // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
-            // Batching will not end. Each time minibatchSource completes an sweep (epoch),
-            // the last minibatch data will be marked as end of a sweep. We use this flag
-            // to count number of epochs.
-            let epoch = 
-                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
-                then epoch - 1
-                else epoch
-
-            learnEpoch (step,epoch)
-
-    learnEpoch (0,epochs)
-
-let epochs = 5
-learn epochs
+let config = {
+    MinibatchSize = 64
+    Epochs = 5
+    Device = DeviceDescriptor.CPUDevice
+    }
+let predictor = learn minibatchSource (featureStreamName,labelsStreamName) config spec
 
 predictor.Save(modelFile)
 
@@ -154,6 +109,8 @@ let minibatchSourceNewModel =
         Path.Combine(ImageDataFolder, "Test_cntk_text.txt"), 
         streamConfigurations, 
         MinibatchSource.FullDataSweep)
+
+let device = DeviceDescriptor.CPUDevice
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
@@ -169,10 +126,7 @@ let ValidateModelWithMinibatchSource(
 
         let model : Function = Function.Load(modelFile, device)
         let imageInput = model.Arguments.[0]
-        let labelOutput = 
-            model.Output
-            // |> Seq.filter (fun o -> o.Name = outputName)
-            // |> Seq.exactlyOne
+        let labelOutput = model.Output
 
         let featureStreamInfo = testMinibatchSource.StreamInfo(featureInputName)
         let labelStreamInfo = testMinibatchSource.StreamInfo(labelInputName)

@@ -85,6 +85,52 @@ let prepare (device:DeviceDescriptor) (spec:Specification) =
     let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
     
     predictor, trainer
+    
+let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
+    minibatchValues 
+    |> Seq.exists(fun a -> a.sweepEnd)
+
+let learn (source:MinibatchSource) (featureStreamName:string,labelsStreamName:string) (config:Config) (spec:Specification) =
+
+    let (predictor,trainer) = prepare config.Device spec    
+    let input = spec.Features
+    let labels = spec.Labels
+    let featureStreamInfo = source.StreamInfo(featureStreamName)
+    let labelStreamInfo = source.StreamInfo(labelsStreamName)
+    let minibatchSize = uint32 (config.MinibatchSize)
+    let device = config.Device
+
+    let rec learnEpoch (step,epoch) = 
+
+        if epoch <= 0
+        // we are done : return function
+        then predictor
+        else
+            let step = step + 1
+            let minibatchData = source.GetNextMinibatch(minibatchSize, device)
+
+            let arguments : IDictionary<Variable, MinibatchData> =
+                [
+                    input, minibatchData.[featureStreamInfo]
+                    labels, minibatchData.[labelStreamInfo]
+                ]
+                |> dict
+
+            trainer.TrainMinibatch(arguments, device) |> ignore
+            
+            // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
+            // Batching will not end. Each time minibatchSource completes an sweep (epoch),
+            // the last minibatch data will be marked as end of a sweep. We use this flag
+            // to count number of epochs.
+            let epoch = 
+                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
+                then epoch - 1
+                else epoch
+
+            learnEpoch (step,epoch)
+
+    learnEpoch (0,config.Epochs)
+
 
 [<RequireQualifiedAccess>]
 module Layer =

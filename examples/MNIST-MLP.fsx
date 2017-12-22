@@ -14,10 +14,6 @@ open System.Collections.Generic
 
 // Conversion of the original C# code to an F# script
 
-let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
-    minibatchValues 
-    |> Seq.exists(fun a -> a.sweepEnd)
-
 // definition / configuration of the network
 let imageSize = 28 * 28
 let numClasses = 10
@@ -67,46 +63,6 @@ let config = {
     Epochs = 5
     Device = DeviceDescriptor.CPUDevice
     }
-let learn (source:MinibatchSource) (featureStreamName:string,labelsStreamName:string) (config:Config) (spec:Specification) =
-
-    let (predictor,trainer) = prepare config.Device spec    
-    
-    let featureStreamInfo = minibatchSource.StreamInfo(featureStreamName)
-    let labelStreamInfo = minibatchSource.StreamInfo(labelsStreamName)
-    let minibatchSize = uint32 (config.MinibatchSize)
-    let device = config.Device
-
-    let rec learnEpoch (step,epoch) = 
-
-        if epoch <= 0
-        // we are done : return function
-        then predictor
-        else
-            let step = step + 1
-            let minibatchData = minibatchSource.GetNextMinibatch(minibatchSize, device)
-
-            let arguments : IDictionary<Variable, MinibatchData> =
-                [
-                    input, minibatchData.[featureStreamInfo]
-                    labels, minibatchData.[labelStreamInfo]
-                ]
-                |> dict
-
-            trainer.TrainMinibatch(arguments, device) |> ignore
-            
-            // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
-            // Batching will not end. Each time minibatchSource completes an sweep (epoch),
-            // the last minibatch data will be marked as end of a sweep. We use this flag
-            // to count number of epochs.
-            let epoch = 
-                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
-                then epoch - 1
-                else epoch
-
-            learnEpoch (step,epoch)
-
-    learnEpoch (0,config.Epochs)
-
 let predictor = learn minibatchSource (featureStreamName,labelsStreamName) config spec
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTMLP.model")
 
@@ -135,10 +91,7 @@ let ValidateModelWithMinibatchSource(
 
         let model : Function = Function.Load(modelFile, device)
         let imageInput = model.Arguments.[0]
-        let labelOutput = 
-            model.Output
-            // |> Seq.filter (fun o -> o.Name = outputName)
-            // |> Seq.exactlyOne
+        let labelOutput = model.Output
 
         let featureStreamInfo = testMinibatchSource.StreamInfo(featureInputName)
         let labelStreamInfo = testMinibatchSource.StreamInfo(labelInputName)
