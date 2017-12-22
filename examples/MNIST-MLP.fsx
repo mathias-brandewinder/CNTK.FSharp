@@ -19,32 +19,14 @@ let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
     |> Seq.exists(fun a -> a.sweepEnd)
 
 // definition / configuration of the network
-
-let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
-
-let featureStreamName = "features"
-let labelsStreamName = "labels"
-let classifierName = "classifierOutput"
 let imageSize = 28 * 28
 let numClasses = 10
 
-let streamConfigurations = 
-    ResizeArray<StreamConfiguration>(
-        [
-            new StreamConfiguration(featureStreamName, imageSize)    
-            new StreamConfiguration(labelsStreamName, numClasses)
-        ]
-        )
-
-let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTMLP.model")
-
-let input = CNTKLib.InputVariable(shape [ imageSize ], DataType.Float, featureStreamName)
-let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
+let input = CNTKLib.InputVariable(shape [ imageSize ], DataType.Float)
+let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float)
 
 let hiddenLayerDim = 200
 let scalingFactor = float32 (1./255.)
-
-// need name
 let classifier = 
     Layer.scale scalingFactor
     |> Layer.stack (Layer.dense hiddenLayerDim)
@@ -60,7 +42,18 @@ let spec = {
     Schedule = { Rate = 0.003125; MinibatchSize = 1}
     }
 
-let device = DeviceDescriptor.CPUDevice
+// Configuration of the learning data source
+let featureStreamName = "features"
+let labelsStreamName = "labels"
+//let classifierName = "classifierOutput"
+let streamConfigurations = 
+    ResizeArray<StreamConfiguration>(
+        [
+            new StreamConfiguration(featureStreamName, imageSize)    
+            new StreamConfiguration(labelsStreamName, numClasses)
+        ]
+        )
+let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
 
 let minibatchSource = 
     MinibatchSource.TextFormatMinibatchSource(
@@ -68,23 +61,26 @@ let minibatchSource =
         streamConfigurations, 
         MinibatchSource.InfinitelyRepeat)
 
-let featureStreamInfo = minibatchSource.StreamInfo(featureStreamName)
-let labelStreamInfo = minibatchSource.StreamInfo(labelsStreamName)
+// learn from the data
+let config = {
+    MinibatchSize = 64
+    Epochs = 5
+    Device = DeviceDescriptor.CPUDevice
+    }
+let learn (source:MinibatchSource) (featureStreamName:string,labelsStreamName:string) (config:Config) (spec:Specification) =
 
-let (predictor,trainer) = prepare device spec
-
-let minibatchSize = uint32 64
-let outputFrequencyInMinibatches = 20
-
-let learn epochs =
-
-    let report = progress (trainer, outputFrequencyInMinibatches)
+    let (predictor,trainer) = prepare config.Device spec    
     
+    let featureStreamInfo = minibatchSource.StreamInfo(featureStreamName)
+    let labelStreamInfo = minibatchSource.StreamInfo(labelsStreamName)
+    let minibatchSize = uint32 (config.MinibatchSize)
+    let device = config.Device
+
     let rec learnEpoch (step,epoch) = 
 
         if epoch <= 0
-        // we are done
-        then ignore ()
+        // we are done : return function
+        then predictor
         else
             let step = step + 1
             let minibatchData = minibatchSource.GetNextMinibatch(minibatchSize, device)
@@ -97,8 +93,6 @@ let learn epochs =
                 |> dict
 
             trainer.TrainMinibatch(arguments, device) |> ignore
-
-            report step |> printer
             
             // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
             // Batching will not end. Each time minibatchSource completes an sweep (epoch),
@@ -111,14 +105,17 @@ let learn epochs =
 
             learnEpoch (step,epoch)
 
-    learnEpoch (0,epochs)
+    learnEpoch (0,config.Epochs)
 
-let epochs = 5
-learn epochs
+let predictor = learn minibatchSource (featureStreamName,labelsStreamName) config spec
+let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTMLP.model")
 
 predictor.Save(modelFile)
 
 // validate the model
+
+let device = DeviceDescriptor.CPUDevice
+
 let minibatchSourceNewModel = 
     MinibatchSource.TextFormatMinibatchSource(
         Path.Combine(ImageDataFolder, "Test_cntk_text.txt"), 
@@ -132,7 +129,6 @@ let ValidateModelWithMinibatchSource(
     numClasses:int, 
     featureInputName:string, 
     labelInputName:string, 
-    outputName:string,
     device:DeviceDescriptor, 
     maxCount:int
     ) =
@@ -213,7 +209,6 @@ let total,errors =
         numClasses, 
         featureStreamName, 
         labelsStreamName, 
-        classifierName, 
         device,
         1000)
 

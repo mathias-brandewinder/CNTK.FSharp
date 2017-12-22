@@ -60,6 +60,12 @@ type Specification = {
     Schedule: Schedule
     }
 
+type Config = {
+    MinibatchSize:int
+    Epochs:int
+    Device:DeviceDescriptor
+    }
+
 let learning (predictor:Function) (schedule:Schedule) =   
     let learningRatePerSample = 
         new TrainingParameterScheduleDouble(schedule.Rate, uint32 schedule.MinibatchSize)
