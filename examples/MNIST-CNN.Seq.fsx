@@ -23,7 +23,7 @@ let network : Computation =
     Layer.scale (float32 (1./255.))
     |> Layer.stack (Conv2D.convolution 
         {    
-            Kernel ={ Width = 3; Height = 3 } 
+            Kernel = { Width = 3; Height = 3 } 
             InputChannels = 1
             OutputFeatures = 4
         }
@@ -62,23 +62,18 @@ let spec = {
     }
 
 // learning
+
 let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
 let featureStreamName = "features"
 let labelsStreamName = "labels"
 
-let streamConfigurations = 
-    ResizeArray<StreamConfiguration>(
-        [
-            new StreamConfiguration(featureStreamName, imageSize)    
-            new StreamConfiguration(labelsStreamName, numClasses)
+let learningSource: DataSource = {
+    SourcePath = Path.Combine(ImageDataFolder, "Train_cntk_text.txt")
+    Streams = [
+        featureStreamName, imageSize
+        labelsStreamName, numClasses
         ]
-        )
-
-let minibatchSource = 
-    MinibatchSource.TextFormatMinibatchSource(
-        Path.Combine(ImageDataFolder, "Train_cntk_text.txt"), 
-        streamConfigurations, 
-        MinibatchSource.InfinitelyRepeat)
+    }
 
 // set per sample learning rate
 let config = {
@@ -87,8 +82,8 @@ let config = {
     Device = DeviceDescriptor.CPUDevice
     Schedule = { Rate = 0.003125; MinibatchSize = 1 }
     }
+let minibatchSource = textSource learningSource InfinitelyRepeat
 let predictor = learn minibatchSource (featureStreamName,labelsStreamName) config spec
-
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
 
 predictor.Save(modelFile)

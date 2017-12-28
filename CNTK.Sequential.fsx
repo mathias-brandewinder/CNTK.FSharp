@@ -41,6 +41,28 @@ let isSweepEnd (minibatchValues: seq<MinibatchData>) =
     minibatchValues 
     |> Seq.exists(fun a -> a.sweepEnd)
 
+type DataSource = {
+    SourcePath: string
+    Streams: (string * int) seq
+    }
+
+type StreamProcessing = 
+    | FullDataSweep
+    | InfinitelyRepeat
+let textSource (data:DataSource) =
+    let streams = 
+        data.Streams
+        |> Seq.map (fun (name, dim) -> 
+            new StreamConfiguration(name, dim))
+        |> ResizeArray
+    fun (processing: StreamProcessing) ->
+        MinibatchSource.TextFormatMinibatchSource(
+            data.SourcePath, 
+            streams, 
+            match processing with
+            | FullDataSweep -> MinibatchSource.FullDataSweep
+            | InfinitelyRepeat -> MinibatchSource.InfinitelyRepeat)
+            
 // Sequential model
 
 type Computation = DeviceDescriptor -> Variable -> Function
