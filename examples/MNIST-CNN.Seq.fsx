@@ -59,7 +59,6 @@ let spec = {
     Model = network
     Loss = CrossEntropyWithSoftmax
     Eval = ClassificationError
-    Schedule = { Rate = 0.003125; MinibatchSize = 1 }
     }
 
 // learning
@@ -75,24 +74,22 @@ let streamConfigurations =
         ]
         )
 
-let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
-
 let minibatchSource = 
     MinibatchSource.TextFormatMinibatchSource(
         Path.Combine(ImageDataFolder, "Train_cntk_text.txt"), 
         streamConfigurations, 
         MinibatchSource.InfinitelyRepeat)
 
-let featureStreamInfo = minibatchSource.StreamInfo(featureStreamName)
-let labelStreamInfo = minibatchSource.StreamInfo(labelsStreamName)
-
 // set per sample learning rate
 let config = {
     MinibatchSize = 64
     Epochs = 5
     Device = DeviceDescriptor.CPUDevice
+    Schedule = { Rate = 0.003125; MinibatchSize = 1 }
     }
 let predictor = learn minibatchSource (featureStreamName,labelsStreamName) config spec
+
+let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
 
 predictor.Save(modelFile)
 

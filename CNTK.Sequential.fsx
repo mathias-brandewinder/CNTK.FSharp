@@ -56,25 +56,25 @@ let evaluation (loss:Loss) (predicted:Function, actual:Variable) =
     | ClassificationError -> 
         CNTKLib.ClassificationError(new Variable(predicted),actual)
 
-type Schedule = {
-    Rate: float
-    MinibatchSize: int
-    }
-
 type Specification = {
     Features: Variable
     Labels: Variable
     Model: Computation
     Loss: Loss
     Eval: Loss
-    Schedule: Schedule
+    }
+
+type Schedule = {
+    Rate: float
+    MinibatchSize: int
     }
 
 type Config = {
     MinibatchSize: int
     Epochs: int
     Device: DeviceDescriptor
-    }    
+    Schedule: Schedule
+    } 
 
 let learning (predictor:Function) (schedule:Schedule) =   
     let learningRatePerSample = 
@@ -86,16 +86,6 @@ let learning (predictor:Function) (schedule:Schedule) =
             ])
     parameterLearners
 
-let prepare (device:DeviceDescriptor) (spec:Specification) =
-    
-    let predictor = spec.Model device spec.Features
-    let loss = evaluation spec.Loss (predictor,spec.Labels)
-    let eval = evaluation spec.Eval (predictor,spec.Labels)   
-    let parameterLearners = learning predictor spec.Schedule     
-    let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
-
-    predictor, trainer
-
 let learn 
     (source:MinibatchSource) 
     (featureStreamName:string, labelsStreamName:string) 
@@ -103,7 +93,14 @@ let learn
     (spec:Specification) =
 
     let device = config.Device
-    let (predictor,trainer) = prepare device spec    
+
+    let predictor = spec.Model device spec.Features
+    let loss = evaluation spec.Loss (predictor,spec.Labels)
+    let eval = evaluation spec.Eval (predictor,spec.Labels)   
+
+    let parameterLearners = learning predictor config.Schedule     
+    let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
+    
     let input = spec.Features
     let labels = spec.Labels
     let featureStreamInfo = source.StreamInfo(featureStreamName)
