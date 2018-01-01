@@ -41,6 +41,20 @@ let isSweepEnd (minibatchValues: seq<MinibatchData>) =
     minibatchValues 
     |> Seq.exists(fun a -> a.sweepEnd)
 
+type Initializer = 
+    | Value of float
+    | GlorotUniform
+    | Custom of CNTK.CNTKDictionary
+
+type Param() =
+
+    static member init (dims: int seq, dataType: DataType, init: Initializer) =
+        fun (device:DeviceDescriptor) ->
+            match init with
+            | Value(x) -> new Parameter(shape dims, dataType, x)
+            | GlorotUniform -> new Parameter(shape dims, dataType, CNTKLib.GlorotUniformInitializer())
+            | Custom(f) -> new Parameter(shape dims, dataType, f)
+
 type DataSource = {
     SourcePath: string
     Streams: (string * int) seq
@@ -243,18 +257,25 @@ module Conv2D =
         Kernel: Kernel 
         InputChannels: int
         OutputFeatures: int
+        Initializer: Initializer
+        }
+
+    let conv2D = {
+        Kernel = { Width = 1; Height = 1 } 
+        InputChannels = 1
+        OutputFeatures = 1
+        Initializer = GlorotUniform
         }
     let convolution (args:Conv2D) : Computation = 
         fun device ->
             fun input ->
-                let convWScale = 0.26
                 let kernel = args.Kernel
                 let convParams = 
-                    new Parameter(
-                        shape [ kernel.Width; kernel.Height; args.InputChannels; args.OutputFeatures ], 
+                    device
+                    |> Param.init (
+                        [ kernel.Width; kernel.Height; args.InputChannels; args.OutputFeatures ], 
                         DataType.Float,
-                        CNTKLib.GlorotUniformInitializer(convWScale, -1, 2), 
-                        device)
+                        args.Initializer)
 
                 CNTKLib.Convolution(
                     convParams, 

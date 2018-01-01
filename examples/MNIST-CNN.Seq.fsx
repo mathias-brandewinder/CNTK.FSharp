@@ -26,6 +26,7 @@ let network : Computation =
             Kernel = { Width = 3; Height = 3 } 
             InputChannels = 1
             OutputFeatures = 4
+            Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
         )
     |> Layer.stack Activation.ReLU
@@ -41,6 +42,7 @@ let network : Computation =
             Kernel ={ Width = 3; Height = 3 } 
             InputChannels = 4 // matches previous conv output
             OutputFeatures = 8
+            Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
         )
     |> Layer.stack Activation.ReLU
@@ -89,17 +91,20 @@ let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
 predictor.Save(modelFile)
 
 // validate the model: this still needs a lot of work to look decent
-let minibatchSourceNewModel = 
-    MinibatchSource.TextFormatMinibatchSource(
-        Path.Combine(ImageDataFolder, "Test_cntk_text.txt"), 
-        streamConfigurations, 
-        MinibatchSource.FullDataSweep)
+
+let testingSource: DataSource = {
+    SourcePath = Path.Combine(ImageDataFolder, "Test_cntk_text.txt")
+    Streams = [
+        featureStreamName, imageSize
+        labelsStreamName, numClasses
+        ]
+    }
+
+let testMinibatchSource = textSource learningSource FullDataSweep
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
     testMinibatchSource:MinibatchSource,
-    imageDim:int[], 
-    numClasses:int, 
     featureInputName:string, 
     labelInputName:string, 
     device:DeviceDescriptor, 
@@ -165,7 +170,8 @@ let ValidateModelWithMinibatchSource(
 
                 let errors = errors + misMatches
 
-                if (int total > maxCount)
+                if isSweepEnd (minibatchData.Values)
+                // if (int total > maxCount)
                 then (total,errors)
                 else countErrors (total,errors)
 
@@ -173,10 +179,8 @@ let ValidateModelWithMinibatchSource(
 
 let total,errors = 
     ValidateModelWithMinibatchSource(
-        modelFile, 
-        minibatchSourceNewModel,
-        [|imageSize|], 
-        numClasses, 
+        modelFile,
+        testMinibatchSource,
         featureStreamName, 
         labelsStreamName, 
         DeviceDescriptor.CPUDevice,
