@@ -35,7 +35,7 @@ let random = Random(0)
 // this is not as efficient as the original example, but clearer: 
 // we create an array of labels first, which we then transform
 // into one-hot form, and into its features. 
-let generateSyntheticData(sampleSize,inputDim,numOutputClasses) =
+let generateSyntheticData (inputDim, numOutputClasses) =
         
     // utility one-hot encoder
     let oneHot classes value = 
@@ -49,51 +49,43 @@ let generateSyntheticData(sampleSize,inputDim,numOutputClasses) =
             generateGaussianNoise random (3.0, 1.0) * (float label + 1.) |> float32
             )
 
-    let labels = Array.init sampleSize (fun _ -> random.Next numOutputClasses)
-    let oneHotLabels = labels |> Array.collect (oneHot numOutputClasses)
-    let features = labels |> Array.collect (generateFeatures)
+    Seq.initInfinite (fun _ ->
+        let labels = random.Next numOutputClasses
+        let oneHotLabels = labels |> oneHot numOutputClasses
+        let features = labels |> generateFeatures
 
-    features, oneHotLabels
+        features, oneHotLabels
+        )
 
-let minibatchSize = 64
-let numMinibatchesToTrain = 1000
-let updatePerMinibatches = 50
 let inputDim = 3
 let numOutputClasses = 2
 
+let featureStreamName = "features"
+let labelsStreamName = "labels"
 
-let builder=new StringBuilder()
-[1 .. (numMinibatchesToTrain)]
-|>List.iter (fun _ ->
-    let str (txt:string) = builder.Append(txt) |> ignore
-    let str_ txt = str txt
-                   str " "
-    let flt value = str_ (value.ToString())
-    let features, oneHotLabels = generateSyntheticData(minibatchSize, inputDim, numOutputClasses)
-    [0..minibatchSize-1]
-    |>List.iter (
-          fun batchIndex ->
-                let values tag vals =
-                    str "|"
-                    str_ tag
-                    vals |> Array.iter (fun entry ->flt entry)
-                values "labels" (Array.sub oneHotLabels (batchIndex*numOutputClasses) numOutputClasses)
-                str "\t"
-                values "features" (Array.sub features (batchIndex*inputDim) inputDim)
-                builder.AppendLine("") |> ignore
-                )
-    )
+let builder = StringBuilder ()
 let dataFile = Path.Combine(__SOURCE_DIRECTORY__, "logisticData.txt")
-File.WriteAllText(dataFile,builder.ToString().Replace(",",".")) |>ignore
+
+generateSyntheticData (inputDim, numOutputClasses)
+|> Seq.take 1000
+|> Seq.iter (fun (features,labels) ->
+        sprintf "|%s %s |%s %s"
+            labelsStreamName
+            (labels |> Array.map (sprintf "%.3f") |> String.concat " ")
+            featureStreamName
+            (features |> Array.map (sprintf "%.3f") |> String.concat " ")
+        |> fun line -> builder.AppendLine(line)
+        |> ignore
+    )
+
+File.WriteAllText(dataFile, builder.ToString())
 
 let device = DeviceDescriptor.CPUDevice
 
 let featureVariable = Variable.InputVariable(shape[inputDim], DataType.Float)
 let labelVariable = Variable.InputVariable(shape[numOutputClasses], DataType.Float)
 
-let network : Computation =
-    Layer.scale (float32 (1.))
-    |> Layer.stack (Layer.dense numOutputClasses)
+let network : Computation = Layer.dense numOutputClasses
 
 let spec = {
     Features = featureVariable
@@ -102,8 +94,6 @@ let spec = {
     Loss = CrossEntropyWithSoftmax
     Eval = ClassificationError
     }
-let featureStreamName = "features"
-let labelsStreamName = "labels"
 
 let learningSource: DataSource = {
     SourcePath = dataFile
@@ -114,35 +104,36 @@ let learningSource: DataSource = {
     }
 let config = {
     MinibatchSize = 64
-    Epochs = 1
+    Epochs = 10
     Device = device
-    Schedule = { Rate = 0.001; MinibatchSize = 1 }
+    Schedule = { Rate = 0.01; MinibatchSize = 1 }
     }
-let outputFrequencyInMinibatches = 20
-let minibatchSource = textSource learningSource InfinitelyRepeat
-let predictor = learn minibatchSource (featureStreamName,labelsStreamName) config spec
-  //                    (fun trainer step -> let report = progress (trainer, outputFrequencyInMinibatches)
-  //                                         report step |> printer
-  //                    )
 
-let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"logistic.model")
+let minibatchSource = textSource learningSource InfinitelyRepeat
+let learner = Learner ()
+learner.MinibatchProgress.Add basicMinibatchSummary
+
+let predictor = learner.learn minibatchSource (featureStreamName, labelsStreamName) config spec
+
+let modelFile = Path.Combine(__SOURCE_DIRECTORY__, "logistic.model")
 predictor.Save(modelFile)
+
 let streams = 
     learningSource.Streams
     |> Seq.map (fun (name, dim) -> 
         new StreamConfiguration(name, dim))
     |> ResizeArray
+
 // validate the model: this still needs a lot of work to look decent
 let minibatchSourceNewModel = 
     MinibatchSource.TextFormatMinibatchSource(
         dataFile, 
         streams, 
         MinibatchSource.FullDataSweep)
+
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
     testMinibatchSource:MinibatchSource,
-    imageDim:int[], 
-    numClasses:int, 
     featureInputName:string, 
     labelInputName:string, 
     device:DeviceDescriptor, 
@@ -218,8 +209,6 @@ let total,errors =
     ValidateModelWithMinibatchSource(
         modelFile, 
         minibatchSourceNewModel,
-        [|inputDim|], 
-        numOutputClasses, 
         featureStreamName, 
         labelsStreamName, 
         DeviceDescriptor.CPUDevice,

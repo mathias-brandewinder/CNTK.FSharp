@@ -85,7 +85,11 @@ let config = {
     Schedule = { Rate = 0.003125; MinibatchSize = 1 }
     }
 let minibatchSource = textSource learningSource InfinitelyRepeat
-let predictor = learn minibatchSource (featureStreamName,labelsStreamName) config spec
+
+let trainer = Learner ()
+trainer.MinibatchProgress.Add(basicMinibatchSummary)
+
+let predictor = trainer.learn minibatchSource (featureStreamName,labelsStreamName) config spec
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
 
 predictor.Save(modelFile)
