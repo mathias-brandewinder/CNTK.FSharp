@@ -84,6 +84,7 @@ type Computation = DeviceDescriptor -> Variable -> Function
 type Loss = 
     | CrossEntropyWithSoftmax
     | ClassificationError
+    | SquaredError
 
 let evaluation (loss:Loss) (predicted:Function, actual:Variable) =
     match loss with
@@ -91,6 +92,8 @@ let evaluation (loss:Loss) (predicted:Function, actual:Variable) =
         CNTKLib.CrossEntropyWithSoftmax(new Variable(predicted),actual)
     | ClassificationError -> 
         CNTKLib.ClassificationError(new Variable(predicted),actual)
+    | SquaredError -> 
+        CNTKLib.SquaredError(new Variable(predicted),actual)
 
 type Specification = {
     Features: Variable
