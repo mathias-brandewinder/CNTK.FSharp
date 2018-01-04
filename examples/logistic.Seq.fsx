@@ -110,7 +110,10 @@ let config = {
     }
 
 let minibatchSource = textSource learningSource InfinitelyRepeat
-let predictor = learn minibatchSource (featureStreamName, labelsStreamName) config spec
+let learner = Learner ()
+learner.MinibatchProgress.Add basicMinibatchSummary
+
+let predictor = learner.learn minibatchSource (featureStreamName, labelsStreamName) config spec
 
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__, "logistic.model")
 predictor.Save(modelFile)

@@ -95,6 +95,7 @@ let evaluation (loss:Loss) (predicted:Function, actual:Variable) =
     | SquaredError -> 
         CNTKLib.SquaredError(new Variable(predicted),actual)
 
+
 type Specification = {
     Features: Variable
     Labels: Variable
@@ -125,57 +126,96 @@ let learning (predictor:Function) (schedule:Schedule) =
             ])
     parameterLearners
 
-let learn 
-    (source:MinibatchSource) 
-    (featureStreamName:string, labelsStreamName:string) 
-    (config:Config) 
-    (spec:Specification) =
+type TrainingMiniBatchSummary = {
+    Loss:float
+    Evaluation:float
+    Samples:uint32
+    TotalSamples:uint32
+    }
 
-    let device = config.Device
+let minibatchSummary (trainer:Trainer) =
+    if trainer.PreviousMinibatchSampleCount () <> (uint32 0)
+    then
+        {
+            Loss = trainer.PreviousMinibatchLossAverage ()
+            Evaluation = trainer.PreviousMinibatchEvaluationAverage ()
+            Samples = trainer.PreviousMinibatchSampleCount ()
+            TotalSamples = trainer.TotalNumberOfSamplesSeen ()
+        }
+    else
+        {
+            Loss = Double.NaN
+            Evaluation = Double.NaN
+            Samples = trainer.PreviousMinibatchSampleCount ()
+            TotalSamples = trainer.TotalNumberOfSamplesSeen ()
+        }
 
-    let predictor = spec.Model device spec.Features
-    let loss = evaluation spec.Loss (predictor,spec.Labels)
-    let eval = evaluation spec.Eval (predictor,spec.Labels)   
+let basicMinibatchSummary (summary:TrainingMiniBatchSummary) =
+    printfn "Total: %-8i Batch: %3i Loss: %.3f Eval: %.3f"
+        summary.TotalSamples
+        summary.Samples
+        summary.Loss
+        summary.Evaluation
 
-    let parameterLearners = learning predictor config.Schedule     
-    let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
-    
-    let input = spec.Features
-    let labels = spec.Labels
-    let featureStreamInfo = source.StreamInfo(featureStreamName)
-    let labelStreamInfo = source.StreamInfo(labelsStreamName)
-    let minibatchSize = uint32 (config.MinibatchSize)
+type Learner () =
 
-    let rec learnEpoch (step,epoch) = 
+    let progress = new Event<TrainingMiniBatchSummary> ()
+    member this.MinibatchProgress = progress.Publish
 
-        if epoch <= 0
-        // we are done : return function
-        then predictor
-        else
-            let step = step + 1
-            let minibatchData = source.GetNextMinibatch(minibatchSize, device)
+    member this.learn 
+        (source:MinibatchSource) 
+        (featureStreamName:string, labelsStreamName:string) 
+        (config:Config) 
+        (spec:Specification) =
 
-            let arguments : IDictionary<Variable, MinibatchData> =
-                [
-                    input, minibatchData.[featureStreamInfo]
-                    labels, minibatchData.[labelStreamInfo]
-                ]
-                |> dict
+        let device = config.Device
 
-            trainer.TrainMinibatch(arguments, device) |> ignore
-            
-            // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
-            // Batching will not end. Each time minibatchSource completes an sweep (epoch),
-            // the last minibatch data will be marked as end of a sweep. We use this flag
-            // to count number of epochs.
-            let epoch = 
-                if isSweepEnd (minibatchData.Values)
-                then epoch - 1
-                else epoch
+        let predictor = spec.Model device spec.Features
+        let loss = evaluation spec.Loss (predictor,spec.Labels)
+        let eval = evaluation spec.Eval (predictor,spec.Labels)   
 
-            learnEpoch (step, epoch)
+        let parameterLearners = learning predictor config.Schedule     
+        let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
+        
+        let input = spec.Features
+        let labels = spec.Labels
+        let featureStreamInfo = source.StreamInfo(featureStreamName)
+        let labelStreamInfo = source.StreamInfo(labelsStreamName)
+        let minibatchSize = uint32 (config.MinibatchSize)
 
-    learnEpoch (0, config.Epochs)
+        let rec learnEpoch (step,epoch) = 
+
+            minibatchSummary trainer
+            |> progress.Trigger
+
+            if epoch <= 0
+            // we are done : return function
+            then predictor
+            else
+                let step = step + 1
+                let minibatchData = source.GetNextMinibatch(minibatchSize, device)
+
+                let arguments : IDictionary<Variable, MinibatchData> =
+                    [
+                        input, minibatchData.[featureStreamInfo]
+                        labels, minibatchData.[labelStreamInfo]
+                    ]
+                    |> dict
+
+                trainer.TrainMinibatch(arguments, device) |> ignore
+                
+                // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
+                // Batching will not end. Each time minibatchSource completes an sweep (epoch),
+                // the last minibatch data will be marked as end of a sweep. We use this flag
+                // to count number of epochs.
+                let epoch = 
+                    if isSweepEnd (minibatchData.Values)
+                    then epoch - 1
+                    else epoch
+
+                learnEpoch (step, epoch)
+
+        learnEpoch (0, config.Epochs)
 
 [<RequireQualifiedAccess>]
 module Layer = 
@@ -322,40 +362,3 @@ let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) =
 let dataMap xs = 
     let dict = Dictionary<Variable,Value>()
     xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
-
-type TrainingMiniBatchSummary = {
-    Loss:float
-    Evaluation:float
-    Samples:uint32
-    TotalSamples:uint32
-    }
-
-let minibatchSummary (trainer:Trainer) =
-    if trainer.PreviousMinibatchSampleCount () <> (uint32 0)
-    then
-        {
-            Loss = trainer.PreviousMinibatchLossAverage ()
-            Evaluation = trainer.PreviousMinibatchEvaluationAverage ()
-            Samples = trainer.PreviousMinibatchSampleCount ()
-            TotalSamples = trainer.TotalNumberOfSamplesSeen ()
-        }
-    else
-        {
-            Loss = Double.NaN
-            Evaluation = Double.NaN
-            Samples = trainer.PreviousMinibatchSampleCount ()
-            TotalSamples = trainer.TotalNumberOfSamplesSeen ()
-        }
-
-let progress (trainer:Trainer, frequency) current =
-    if current % frequency = 0
-    then Some(current, minibatchSummary trainer)
-    else Option.None
-
-let printer = 
-    Option.iter (fun (batch,report) ->
-        printf "Batch: %i " batch
-        printf "Average Loss: %.3f " (report.Loss)
-        printf "Average Eval: %.3f " (report.Evaluation)
-        printfn ""
-        )
