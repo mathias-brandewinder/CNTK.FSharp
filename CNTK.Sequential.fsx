@@ -219,7 +219,7 @@ type Learner () =
 
             minibatchSummary trainer
             |> progress.Trigger
-            //printfn "epoch: %-8i step: %-8i" epoch step
+
             if epoch <= 0
             // we are done : return function
             then predictor
