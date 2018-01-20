@@ -5,7 +5,7 @@ https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/Log
 
 // Use the CNTK.fsx file to load the dependencies.
 
-#load "../CNTK.Sequential.fsx"
+#load "../../CNTK.Sequential.fsx"
 open CNTK
 open CNTK.Sequential
 

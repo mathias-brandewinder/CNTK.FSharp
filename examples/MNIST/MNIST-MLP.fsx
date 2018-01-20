@@ -5,7 +5,7 @@ https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/MNI
 
 // Use the CNTK.fsx file to load the dependencies.
 
-#load "../CNTK.fsx"
+#load "../../CNTK.fsx"
 open CNTK
 
 open System
@@ -71,7 +71,7 @@ let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
 
 // definition / configuration of the network
 
-let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
+let ImageDataFolder = __SOURCE_DIRECTORY__
 
 let featureStreamName = "features"
 let labelsStreamName = "labels"
