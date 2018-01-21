@@ -8,9 +8,7 @@ https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/MNI
 #load "../../CNTK.Sequential.fsx"
 open CNTK
 open CNTK.Sequential
-open System
 open System.IO
-open System.Collections.Generic
 
 // definition / configuration of the network
 
@@ -24,7 +22,6 @@ let network : Computation =
     |> Layer.stack (Conv2D.convolution 
         {    
             Kernel = { Width = 3; Height = 3 } 
-            InputChannels = 1
             OutputFeatures = 4
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
@@ -40,7 +37,6 @@ let network : Computation =
     |> Layer.stack (Conv2D.convolution
         {    
             Kernel ={ Width = 3; Height = 3 } 
-            InputChannels = 4 // matches previous conv output
             OutputFeatures = 8
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }

@@ -298,32 +298,32 @@ module Conv2D =
 
     type Conv2D = {
         Kernel: Kernel 
-        InputChannels: int
         OutputFeatures: int
         Initializer: Initializer
         }
 
     let conv2D = {
         Kernel = { Width = 1; Height = 1 } 
-        InputChannels = 1
         OutputFeatures = 1
         Initializer = GlorotUniform
         }
+
     let convolution (args:Conv2D) : Computation = 
         fun device ->
             fun input ->
                 let kernel = args.Kernel
+                let inputChannels = input.Shape.Dimensions.[2]
                 let convParams = 
                     device
                     |> Param.init (
-                        [ kernel.Width; kernel.Height; args.InputChannels; args.OutputFeatures ], 
+                        [ kernel.Width; kernel.Height; inputChannels; args.OutputFeatures ], 
                         DataType.Float,
                         args.Initializer)
 
                 CNTKLib.Convolution(
                     convParams, 
                     input, 
-                    shape [ 1; 1; args.InputChannels ]
+                    shape [ 1; 1; inputChannels ]
                     )
 
     type Window = {
