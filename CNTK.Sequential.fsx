@@ -227,6 +227,11 @@ module Layer =
                 let intermediate = new Variable(curr device variable)
                 next device intermediate
 
+    // combine a sequence of Computation Layers into 1
+    let sequence (computations: Computation seq) =
+        computations
+        |> Seq.reduce (fun acc c -> stack c acc)
+
     let scale<'T> (scalar:'T) : Computation = 
         fun device ->
             fun input ->

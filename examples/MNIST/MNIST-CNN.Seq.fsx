@@ -51,10 +51,44 @@ let network : Computation =
         )
     |> Layer.stack (Layer.dense numClasses)
 
+// alternate version, using sequence:
+let network2 : Computation =
+    Layer.sequence
+        [
+            Layer.scale (float32 (1./255.))
+            Conv2D.convolution 
+                {    
+                    Kernel = { Width = 3; Height = 3 } 
+                    OutputFeatures = 4
+                    Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
+                }               
+            Activation.ReLU
+            Conv2D.pooling
+                {
+                    PoolingType = PoolingType.Max
+                    Window = { Width = 3; Height = 3 }
+                    Stride = { Horizontal = 2; Vertical = 2 }
+                }
+            Conv2D.convolution
+                {    
+                    Kernel ={ Width = 3; Height = 3 } 
+                    OutputFeatures = 8
+                    Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
+                }
+            Activation.ReLU
+            Conv2D.pooling
+                {
+                    PoolingType = PoolingType.Max
+                    Window = { Width = 3; Height = 3 }
+                    Stride = { Horizontal = 2; Vertical = 2 }
+                }
+            Layer.dense numClasses
+        ]
+
 let spec = {
     Features = input
     Labels = labels
-    Model = network
+    Model = network2
     Loss = CrossEntropyWithSoftmax
     Eval = ClassificationError
     }
@@ -100,7 +134,7 @@ let testingSource: DataSource = {
         ]
     }
 
-let testMinibatchSource = textSource learningSource FullDataSweep
+let testMinibatchSource = textSource testingSource FullDataSweep
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
