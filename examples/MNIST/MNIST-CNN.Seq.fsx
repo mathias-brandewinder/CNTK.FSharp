@@ -5,12 +5,10 @@ https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/MNI
 
 // Use the CNTK.fsx file to load the dependencies.
 
-#load "../CNTK.Sequential.fsx"
+#load "../../CNTK.Sequential.fsx"
 open CNTK
 open CNTK.Sequential
-open System
 open System.IO
-open System.Collections.Generic
 
 // definition / configuration of the network
 
@@ -24,7 +22,6 @@ let network : Computation =
     |> Layer.stack (Conv2D.convolution 
         {    
             Kernel = { Width = 3; Height = 3 } 
-            InputChannels = 1
             OutputFeatures = 4
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
@@ -40,7 +37,6 @@ let network : Computation =
     |> Layer.stack (Conv2D.convolution
         {    
             Kernel ={ Width = 3; Height = 3 } 
-            InputChannels = 4 // matches previous conv output
             OutputFeatures = 8
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
@@ -55,17 +51,51 @@ let network : Computation =
         )
     |> Layer.stack (Layer.dense numClasses)
 
+// alternate version, using sequence:
+let network2 : Computation =
+    Layer.sequence
+        [
+            Layer.scale (float32 (1./255.))
+            Conv2D.convolution 
+                {    
+                    Kernel = { Width = 3; Height = 3 } 
+                    OutputFeatures = 4
+                    Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
+                }               
+            Activation.ReLU
+            Conv2D.pooling
+                {
+                    PoolingType = PoolingType.Max
+                    Window = { Width = 3; Height = 3 }
+                    Stride = { Horizontal = 2; Vertical = 2 }
+                }
+            Conv2D.convolution
+                {    
+                    Kernel ={ Width = 3; Height = 3 } 
+                    OutputFeatures = 8
+                    Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
+                }
+            Activation.ReLU
+            Conv2D.pooling
+                {
+                    PoolingType = PoolingType.Max
+                    Window = { Width = 3; Height = 3 }
+                    Stride = { Horizontal = 2; Vertical = 2 }
+                }
+            Layer.dense numClasses
+        ]
+
 let spec = {
     Features = input
     Labels = labels
-    Model = network
+    Model = network2
     Loss = CrossEntropyWithSoftmax
     Eval = ClassificationError
     }
 
 // learning
 
-let ImageDataFolder = Path.Combine(__SOURCE_DIRECTORY__, "../data/")
+let ImageDataFolder = __SOURCE_DIRECTORY__
 let featureStreamName = "features"
 let labelsStreamName = "labels"
 
@@ -106,7 +136,7 @@ let testingSource: DataSource = {
         ]
     }
 
-let testMinibatchSource = textSource learningSource FullDataSweep
+let testMinibatchSource = textSource testingSource FullDataSweep
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
