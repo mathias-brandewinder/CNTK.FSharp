@@ -1,4 +1,8 @@
 RESTRICTION: == net45
 NUGET
   remote: https://www.nuget.org/api/v2
-    CNTK.CPUOnly (2.3.1)
+    CNTK.CPUOnly (2.4)
+      CNTK.Deps.MKL (2.4)
+      CNTK.Deps.OpenCV.Zip (2.4)
+    CNTK.Deps.MKL (2.4)
+    CNTK.Deps.OpenCV.Zip (2.4)
