@@ -1,37 +1,8 @@
-(*
-This file is intended to load dependencies in an F# script,
-to train a model from the scripting environment.
-CNTK, CPU only, is assumed to have been installed via Paket.
-*)
+#load "ScriptLoader.fsx"
+open CNTK
 
 open System
-open System.IO
 open System.Collections.Generic
-
-Environment.SetEnvironmentVariable("Path",
-    Environment.GetEnvironmentVariable("Path") + ";" + __SOURCE_DIRECTORY__)
-
-let dependencies = [
-        "./packages/CNTK.CPUOnly/lib/net45/x64/"
-        "./packages/CNTK.CPUOnly/support/x64/Dependency/"
-        "./packages/CNTK.CPUOnly/support/x64/Dependency/Release/"
-        "./packages/CNTK.CPUOnly/support/x64/Release/"    
-    ]
-
-dependencies 
-|> Seq.iter (fun dep -> 
-    let path = Path.Combine(__SOURCE_DIRECTORY__,dep)
-    Environment.SetEnvironmentVariable("Path",
-        Environment.GetEnvironmentVariable("Path") + ";" + path)
-    )    
-
-#I "./packages/CNTK.CPUOnly/lib/net45/x64/"
-#I "./packages/CNTK.CPUOnly/support/x64/Dependency/"
-#I "./packages/CNTK.CPUOnly/support/x64/Dependency/Release/"
-#I "./packages/CNTK.CPUOnly/support/x64/Release/"
-
-#r "./packages/CNTK.CPUOnly/lib/net45/x64/Cntk.Core.Managed-2.3.1.dll"
-open CNTK
 
 // utilities
 
@@ -69,28 +40,30 @@ type Tensor =
         CNTKLib.ElementTimes(t1.toVar,t2.toVar)
         |> Fun
 
-[<RequireQualifiedAccess>]
-module Tensor = 
-
-    let toFunction(t:Tensor) = t.toFun
-    let toVariable(t:Tensor) = t.toVar
-    
-    // named functions
-    let plus (t1:Tensor,t2:Tensor,name:string) =
+    static member plus (t1:Tensor,t2:Tensor) =
+        CNTKLib.Plus (t1.toVar,t2.toVar)
+        |> Fun    
+    static member plus (t1:Tensor,t2:Tensor,name:string) =
         CNTKLib.Plus (t1.toVar,t2.toVar,name)
         |> Fun
-    let times (t1:Tensor,t2:Tensor,name:string) =
+    static member times (t1:Tensor,t2:Tensor) =
+        CNTKLib.Times (t1.toVar,t2.toVar)
+        |> Fun        
+    static member times (t1:Tensor,t2:Tensor,name:string) =
         CNTKLib.Times (t1.toVar,t2.toVar,name)
         |> Fun
-    let elementTimes (t1:Tensor,t2:Tensor,name:string) =
+    static member elementTimes (t1:Tensor,t2:Tensor) =
+        CNTKLib.ElementTimes (t1.toVar,t2.toVar)
+        |> Fun
+    static member elementTimes (t1:Tensor,t2:Tensor,name:string) =
         CNTKLib.ElementTimes (t1.toVar,t2.toVar,name)
         |> Fun
 
-    let exp (x:Tensor) = CNTKLib.Exp (x.toVar) |> Fun 
-    let log (x:Tensor) = CNTKLib.Log (x.toVar) |> Fun
-    let sigmoid (x:Tensor) = CNTKLib.Sigmoid (x.toVar) |> Fun
-    let tanh (x:Tensor) = CNTKLib.Tanh (x.toVar) |> Fun
-    
+    static member exp (x:Tensor) = CNTKLib.Exp (x.toVar) |> Fun 
+    static member log (x:Tensor) = CNTKLib.Log (x.toVar) |> Fun
+    static member sigmoid (x:Tensor) = CNTKLib.Sigmoid (x.toVar) |> Fun
+    static member tanh (x:Tensor) = CNTKLib.Tanh (x.toVar) |> Fun
+  
 type Variable with
     member this.Tensor = Var(this)
     member this.FromTensor(t:Tensor) = Tensor.toVariable t
