@@ -3,6 +3,7 @@
 [<AutoOpen>]
 module Core = 
 
+    open System
     open System.Collections.Generic
     open CNTK
 
@@ -59,6 +60,14 @@ module Core =
             CNTKLib.ElementTimes (t1.toVar,t2.toVar,name)
             |> Fun
 
+        static member flatten (t:Tensor) =
+            let tensorShape = t.toVar.Shape
+            if (tensorShape.Rank <> 1)
+            then
+                let newDim = tensorShape.Dimensions |> Seq.reduce (*)
+                CNTKLib.Reshape(t.toVar, shape [ newDim ]) |> Fun
+            else t
+
         static member exp (x:Tensor) = CNTKLib.Exp (x.toVar) |> Fun 
         static member log (x:Tensor) = CNTKLib.Log (x.toVar) |> Fun
         static member sigmoid (x:Tensor) = CNTKLib.Sigmoid (x.toVar) |> Fun
@@ -77,6 +86,14 @@ module Core =
         | GlorotUniform
         | Custom of CNTK.CNTKDictionary
 
+    type Param () =
+        static member init (dims: int seq, dataType: DataType, init: Initializer) =
+            fun (device:DeviceDescriptor) ->
+                match init with
+                | Value(x) -> new Parameter(shape dims, dataType, x)
+                | GlorotUniform -> new Parameter(shape dims, dataType, CNTKLib.GlorotUniformInitializer())
+                | Custom(args) -> new Parameter(shape dims, dataType, args)
+
     type Loss = 
         | CrossEntropyWithSoftmax
         | ClassificationError
@@ -85,16 +102,61 @@ module Core =
     let evaluation (loss:Loss) (predicted:Function, actual:Variable) =
         match loss with
         | CrossEntropyWithSoftmax -> 
-            CNTKLib.CrossEntropyWithSoftmax(new Variable(predicted),actual)
+            CNTKLib.CrossEntropyWithSoftmax(var predicted,actual)
         | ClassificationError -> 
-            CNTKLib.ClassificationError(new Variable(predicted),actual)
+            CNTKLib.ClassificationError(var predicted,actual)
         | SquaredError -> 
-            CNTKLib.SquaredError(new Variable(predicted),actual)
+            CNTKLib.SquaredError(var predicted,actual)
 
-    let private dictAdd<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
-        dict.Add(key,value)
-        dict
+    [<RequireQualifiedAccess>]
+    module Minibatch =
+
+        let isSweepEnd (minibatchValues: seq<MinibatchData>) =
+            minibatchValues 
+            |> Seq.exists(fun a -> a.sweepEnd)
+
+        type TrainingSummary = {
+            Loss:float
+            Evaluation:float
+            Samples:uint32
+            TotalSamples:uint32
+            }
+
+        let summary (trainer:Trainer) =
+            if trainer.PreviousMinibatchSampleCount () <> (uint32 0)
+            then
+                {
+                    Loss = trainer.PreviousMinibatchLossAverage ()
+                    Evaluation = trainer.PreviousMinibatchEvaluationAverage ()
+                    Samples = trainer.PreviousMinibatchSampleCount ()
+                    TotalSamples = trainer.TotalNumberOfSamplesSeen ()
+                }
+            else
+                {
+                    Loss = Double.NaN
+                    Evaluation = Double.NaN
+                    Samples = trainer.PreviousMinibatchSampleCount ()
+                    TotalSamples = trainer.TotalNumberOfSamplesSeen ()
+                }
+
+        let basicPrint (summary:TrainingSummary) =
+            printfn "Total: %-8i Batch: %3i Loss: %.3f Eval: %.3f"
+                summary.TotalSamples
+                summary.Samples
+                summary.Loss
+                summary.Evaluation
+
+    [<RequireQualifiedAccess>]
+    module Dict =
+
+        let add<'K,'V> (key,value) (dict:Dictionary<'K,'V>) = 
+            dict.Add(key,value)
+            dict
+
+    type DataMap = Dictionary<Variable,Value>
 
     let dataMap xs = 
-        let dict = Dictionary<Variable,Value>()
-        xs |> Seq.fold (fun dict (var,value) -> dictAdd (var,value) dict) dict
+        let dataMap = DataMap ()
+        xs 
+        |> Seq.fold (fun dict (var,value) -> 
+            Dict.add (var,value) dict) dataMap        

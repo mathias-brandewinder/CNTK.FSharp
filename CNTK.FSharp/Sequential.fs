@@ -6,17 +6,6 @@ module Sequential =
     open System.Collections.Generic
     open CNTK
 
-    type Param () =
-
-        static member init (dims: int seq, dataType: DataType, init: Initializer) =
-            fun (device:DeviceDescriptor) ->
-                match init with
-                | Value(x) -> new Parameter(shape dims, dataType, x)
-                | GlorotUniform -> new Parameter(shape dims, dataType, CNTKLib.GlorotUniformInitializer())
-                | Custom(args) -> new Parameter(shape dims, dataType, args)
-            
-    // Sequential model
-
     type Computation = DeviceDescriptor -> Variable -> Function
 
     [<RequireQualifiedAccess>]
@@ -162,10 +151,6 @@ module Sequential =
                         shape [ stride.Horizontal; stride.Vertical ], 
                         [| true |]
                         )
-
-    let isSweepEnd (minibatchValues: seq<MinibatchData>) =
-        minibatchValues 
-        |> Seq.exists(fun a -> a.sweepEnd)
 
     type DataSource = {
         SourcePath: string

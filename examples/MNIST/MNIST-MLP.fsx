@@ -3,18 +3,17 @@ F# port of the original C# example from the CNTK docs:
 https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/MNISTClassifier.cs
 *)
 
-// Use the CNTK.fsx file to load the dependencies.
-
-#load "../../CNTK.fsx"
+#load "../../ScriptLoader.fsx"
 open CNTK
+
+#load "../../CNTK.FSharp/Core.fs"
+open CNTK.FSharp
 
 open System
 open System.IO
 open System.Collections.Generic
 
 // Conversion of the original C# code to an F# script
-
-// Helpers to simplify model creation from F#
 
 let FullyConnectedLinearLayer(
     input:Variable, 
@@ -24,51 +23,26 @@ let FullyConnectedLinearLayer(
 
     let inputDim = input.Shape.[0]
 
-    let timesParam = 
-        new Parameter(
-            shape [outputDim; inputDim], 
-            DataType.Float,
-            CNTKLib.GlorotUniformInitializer(
-                float CNTKLib.DefaultParamInitScale,
-                CNTKLib.SentinelValueForInferParamInitRank,
-                CNTKLib.SentinelValueForInferParamInitRank, 
-                uint32 1),
-            device, 
-            "timesParam")
+    let weights = Param.init ([outputDim;inputDim], DataType.Float, GlorotUniform) device
 
-    let timesFunction = 
-        new Variable(CNTKLib.Times(timesParam, input, "times"))
+    let timesFunction = weights.Tensor * input.Tensor
 
-    let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
-    CNTKLib.Plus(plusParam, timesFunction, outputName)
+    let bias = Param.init ([ outputDim ], DataType.Float, Value 0.0) device
+    
+    Tensor.plus(bias.Tensor, timesFunction, outputName) 
+    |> Tensor.toFunction
 
 let Dense(
     input:Variable, 
     outputDim:int,
     device:DeviceDescriptor,
-    activation:Activation, 
     outputName:string) : Function =
 
-    let input : Variable =
-        if (input.Shape.Rank <> 1)
-        then
-            let newDim = input.Shape.Dimensions |> Seq.reduce(fun d1 d2 -> d1 * d2)
-            new Variable(CNTKLib.Reshape(input, shape [ newDim ]))
-        else input
-
-    let fullyConnected : Function = 
-        FullyConnectedLinearLayer(input, outputDim, device, outputName)
+    input.Tensor 
+    |> Tensor.flatten
+    |> fun tensor -> 
+        FullyConnectedLinearLayer(tensor.toVar, outputDim, device, outputName)
     
-    match activation with
-    | Activation.None -> fullyConnected
-    | Activation.ReLU -> CNTKLib.ReLU(new Variable(fullyConnected))
-    | Activation.Sigmoid -> CNTKLib.Sigmoid(new Variable(fullyConnected))
-    | Activation.Tanh -> CNTKLib.Tanh(new Variable(fullyConnected))
-
-let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
-    minibatchValues 
-    |> Seq.exists(fun a -> a.sweepEnd)
-
 // definition / configuration of the network
 
 let ImageDataFolder = __SOURCE_DIRECTORY__
@@ -104,10 +78,11 @@ let CreateMLPClassifier(
     scaledInput:Function,
     classifierName:string) =
 
-        let dense1:Function = Dense(new Variable(scaledInput), hiddenLayerDim, device, Activation.Sigmoid, "");
-        let classifierOutput:Function = Dense(new Variable(dense1), numOutputClasses, device, Activation.None, classifierName);
-        classifierOutput
-
+        let dense1 = 
+            Dense(var scaledInput, hiddenLayerDim, device, "")
+            |> (var >> CNTKLib.Sigmoid)
+        Dense(var dense1, numOutputClasses, device, classifierName)
+        
 let classifierOutput = CreateMLPClassifier(device, numClasses, hiddenLayerDim, scaledInput, classifierName)
 
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float, labelsStreamName)
@@ -141,8 +116,6 @@ let outputFrequencyInMinibatches = 20
 
 let learn epochs =
 
-    let report = progress (trainer, outputFrequencyInMinibatches)
-
     let rec learnEpoch (step,epoch) = 
 
         if epoch <= 0
@@ -161,14 +134,18 @@ let learn epochs =
 
             trainer.TrainMinibatch(arguments, device) |> ignore
 
-            report step |> printer
-            
+            if step % outputFrequencyInMinibatches = 0
+            then
+                trainer
+                |> Minibatch.summary 
+                |> Minibatch.basicPrint
+        
             // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
             // Batching will not end. Each time minibatchSource completes an sweep (epoch),
             // the last minibatch data will be marked as end of a sweep. We use this flag
             // to count number of epochs.
             let epoch = 
-                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
+                if (Minibatch.isSweepEnd(minibatchData.Values))
                 then epoch - 1
                 else epoch
 
