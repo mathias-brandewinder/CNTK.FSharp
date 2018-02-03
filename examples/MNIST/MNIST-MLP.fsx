@@ -13,8 +13,6 @@ open System
 open System.IO
 open System.Collections.Generic
 
-// Conversion of the original C# code to an F# script
-
 let FullyConnectedLinearLayer(
     input:Variable, 
     outputDim:int, 

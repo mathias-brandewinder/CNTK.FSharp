@@ -3,18 +3,15 @@ F# port of the original C# example from the CNTK docs:
 https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/MNISTClassifier.cs
 *)
 
-// Use the CNTK.fsx file to load the dependencies.
-
-#load "../../CNTK.fsx"
+#load "../../ScriptLoader.fsx"
 open CNTK
+
+#load "../../CNTK.FSharp/Core.fs"
+open CNTK.FSharp
 
 open System
 open System.IO
 open System.Collections.Generic
-
-// Conversion of the original C# code to an F# script
-
-// Helpers to simplify model creation from F#
 
 let FullyConnectedLinearLayer(
     input:Variable, 
@@ -42,6 +39,12 @@ let FullyConnectedLinearLayer(
     let plusParam = new Parameter(shape [ outputDim ], 0.0f, device, "plusParam")
     CNTKLib.Plus(plusParam, timesFunction, outputName)
 
+type Activation = 
+    | None
+    | ReLU
+    | Sigmoid
+    | Tanh
+
 let Dense(
     input:Variable, 
     outputDim:int,
@@ -64,10 +67,6 @@ let Dense(
     | Activation.ReLU -> CNTKLib.ReLU(new Variable(fullyConnected))
     | Activation.Sigmoid -> CNTKLib.Sigmoid(new Variable(fullyConnected))
     | Activation.Tanh -> CNTKLib.Tanh(new Variable(fullyConnected))
-
-let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
-    minibatchValues 
-    |> Seq.exists(fun a -> a.sweepEnd)
 
 // definition / configuration of the network
 
@@ -225,8 +224,6 @@ let outputFrequencyInMinibatches = 20
 
 let learn epochs =
 
-    let report = progress (trainer, outputFrequencyInMinibatches)
-
     let rec learnEpoch (step,epoch) = 
 
         if epoch <= 0
@@ -245,14 +242,18 @@ let learn epochs =
 
             trainer.TrainMinibatch(arguments, device) |> ignore
 
-            report step |> printer
-            
+            if step % outputFrequencyInMinibatches = 0
+            then
+                trainer
+                |> Minibatch.summary 
+                |> Minibatch.basicPrint        
+
             // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
             // Batching will not end. Each time minibatchSource completes an sweep (epoch),
             // the last minibatch data will be marked as end of a sweep. We use this flag
             // to count number of epochs.
             let epoch = 
-                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
+                if (Minibatch.isSweepEnd(minibatchData.Values))
                 then epoch - 1
                 else epoch
 
@@ -365,4 +366,3 @@ let total,errors =
         1000)
 
 printfn "Total: %i / Errors: %i" total errors
-

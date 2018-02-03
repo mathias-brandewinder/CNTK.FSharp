@@ -3,17 +3,15 @@ F# port of the original C# example from the CNTK docs:
 https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/LogisticRegression.cs
 *)
 
-// Use the CNTK.fsx file to load the dependencies.
-
-#load "../../CNTK.fsx"
+#load "../../ScriptLoader.fsx"
 open CNTK
 
+#load "../../CNTK.FSharp/Core.fs"
+open CNTK.FSharp
+
 open System
+open System.IO
 open System.Collections.Generic
-
-// Conversion of the original C# code to an F# script
-
-// Helpers to simplify model creation from F#
 
 // Creating a synthetic dataset
 
@@ -95,10 +93,7 @@ let parameterLearners =
 let trainer = Trainer.CreateTrainer(classifierOutput, loss, evalError, parameterLearners)
 
 let minibatchSize = 64
-let numMinibatchesToTrain = 1000
-let updatePerMinibatches = 50
-
-let report = progress (trainer, updatePerMinibatches) 
+let numMinibatchesToTrain = 100
 
 for minibatchCount in 1 .. (numMinibatchesToTrain) do
         
@@ -112,7 +107,5 @@ for minibatchCount in 1 .. (numMinibatchesToTrain) do
         |> dict
             
     trainer.TrainMinibatch(batch, device) |> ignore
-            
-    report minibatchCount |> printer
 
-classifierOutput |> Debug.valueAt [ 1.0f; 2.0f;  3.0f] 
+    trainer |> Minibatch.summary |> Minibatch.basicPrint      
