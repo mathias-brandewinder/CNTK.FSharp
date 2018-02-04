@@ -1,17 +1,17 @@
 (*
+F# port of the original C# example from the CNTK docs:
 https://github.com/Microsoft/CNTK/master/Examples/TrainingCSharp/Common/LSTMSequenceClassifier.cs
 *)
+
+#load "../../ScriptLoader.fsx"
+open CNTK
+
+#load "../../CNTK.FSharp/Core.fs"
+open CNTK.FSharp
 
 open System
 open System.IO
 open System.Collections.Generic
-
-#load "../../CNTK.fsx"
-open CNTK
-
-let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
-    minibatchValues 
-    |> Seq.exists(fun a -> a.sweepEnd)
 
 let FullyConnectedLinearLayer(
     input:Variable, 
@@ -43,13 +43,9 @@ let Embedding(input:Variable, embeddingDim:int, device:DeviceDescriptor) : Funct
 
     let inputDim = input.Shape.[0]
     let embeddingParameters = 
-        new Parameter(
-            shape [ embeddingDim; inputDim ], 
-            DataType.Float, 
-            CNTKLib.GlorotUniformInitializer(), 
-            device
-            )
-    CNTKLib.Times(embeddingParameters, input)
+        device
+        |> Param.init ([ embeddingDim; inputDim ],  DataType.Float, GlorotUniform)            
+    embeddingParameters * input
 
 let Stabilize<'ElementType>(x:Variable, device:DeviceDescriptor) : Function =
 
@@ -65,25 +61,16 @@ let Stabilize<'ElementType>(x:Variable, device:DeviceDescriptor) : Function =
             Constant.Scalar(DataType.Double, 1.0 / 4.0)
         
     let beta = 
-        CNTKLib.ElementTimes(
-            fInv,
-            new Variable(
-                CNTKLib.Log(
-                    new Variable(
-                        Constant.Scalar(f.DataType, 1.0) +  
-                        new Variable(
-                            CNTKLib.Exp(
-                                new Variable(
-                                    CNTKLib.ElementTimes(f, new Parameter(new NDShape(), f.DataType, 0.99537863, device))
-                                    )
-                                )
-                            )
-                        )
-                    )
+        fInv.Tensor .*
+        Tensor.log(
+            Constant.Scalar(f.DataType, 1.0).Tensor +  
+            Tensor.exp(
+                f.Tensor .* 
+                (new Parameter(new NDShape(), f.DataType, 0.99537863, device) |> Tensor.from)
                 )
             )
-    
-    CNTKLib.ElementTimes(new Variable(beta), x)
+                            
+    beta .* x.Tensor |> Tensor.toFunction
 
 let LSTMPCellWithSelfStabilization<'ElementType>( 
     input:Variable, 
@@ -101,11 +88,13 @@ let LSTMPCellWithSelfStabilization<'ElementType>(
             then DataType.Float 
             else DataType.Double
 
-        let createBiasParam : int -> Parameter =
-            match dataType with
-            | DataType.Float -> fun dim -> new Parameter(shape [ dim ], 0.01f, device, "")
-            | DataType.Double -> fun dim -> new Parameter(shape [ dim ], 0.01, device, "")
-
+        let createBiasParam : int -> Tensor =
+            fun dim ->
+                match dataType with
+                | DataType.Float -> new Parameter(shape [ dim ], 0.01f, device, "")
+                | DataType.Double -> new Parameter(shape [ dim ], 0.01, device, "")
+                |> Tensor.from
+            
         // TODO: replace by a function...
         let seeder =
             let mutable s = uint32 1
@@ -113,7 +102,7 @@ let LSTMPCellWithSelfStabilization<'ElementType>(
                 s <- s + uint32 1
                 s
 
-        let createProjectionParam : int -> Parameter = 
+        let createProjectionParam : int -> Tensor = 
             fun oDim -> 
                 new Parameter(
                     shape [ oDim; NDShape.InferredDimension ],
@@ -121,8 +110,9 @@ let LSTMPCellWithSelfStabilization<'ElementType>(
                     CNTKLib.GlorotUniformInitializer(1.0, 1, 0, seeder ()), 
                     device
                     )
+                |> Tensor.from
         
-        let createDiagWeightParam : int -> Parameter = 
+        let createDiagWeightParam : int -> Tensor = 
             fun dim ->
                 new Parameter(
                     shape [ dim ], 
@@ -130,75 +120,55 @@ let LSTMPCellWithSelfStabilization<'ElementType>(
                     CNTKLib.GlorotUniformInitializer(1.0, 1, 0, seeder ()), 
                     device
                     )
+                |> Tensor.from
 
-        let stabilizedPrevOutput : Function = Stabilize<'ElementType>(prevOutput, device)
-        let stabilizedPrevCellState : Function = Stabilize<'ElementType>(prevCellState, device)
+        let stabilizedPrevOutput : Tensor = 
+            Stabilize<'ElementType>(prevOutput, device) |> Fun
+        let stabilizedPrevCellState : Tensor = 
+            Stabilize<'ElementType>(prevCellState, device) |> Fun
+        
+        let projectInput : unit -> Tensor = 
+            fun () -> 
+                createBiasParam cellDim
+                + (createProjectionParam cellDim * input.Tensor)
 
-        let projectInput : unit -> Variable = 
-            fun () -> new Variable(createBiasParam (cellDim) + new Variable(createProjectionParam(cellDim) * input))
-
-        // holy lambdas this is nasty
         // Input gate
-        let it : Function =
-            CNTKLib.Sigmoid(
-                new Variable(
-                    new Variable(projectInput () + new Variable((createProjectionParam (cellDim) * new Variable(stabilizedPrevOutput)))) 
-                    + new Variable(CNTKLib.ElementTimes(createDiagWeightParam (cellDim), new Variable(stabilizedPrevCellState)))
-                    )
-                )
-                
-        let bit : Function = 
-            CNTKLib.ElementTimes(
-                new Variable(it),
-                new Variable(
-                    CNTKLib.Tanh(
-                        new Variable(projectInput () + new Variable(createProjectionParam(cellDim) * new Variable(stabilizedPrevOutput)))
-                        )
-                    )
-                )
-
+        let it : Tensor =
+            projectInput () 
+            + (createProjectionParam cellDim * stabilizedPrevOutput) 
+            + (createDiagWeightParam cellDim .* stabilizedPrevCellState)
+            |> Tensor.sigmoid
+                               
+        let bit : Tensor = 
+            it .* (projectInput () + (createProjectionParam cellDim *  stabilizedPrevOutput) |> Tensor.tanh)
+                                  
         // Forget-me-not gate
-        let ft : Function = 
-            CNTKLib.Sigmoid(
-                new Variable(
-                    projectInput () + 
-                    new Variable(
-                        new Variable(createProjectionParam(cellDim) * new Variable(stabilizedPrevOutput)) +
-                        new Variable(
-                            CNTKLib.ElementTimes(createDiagWeightParam(cellDim), new Variable(stabilizedPrevCellState))
-                            )
-                        )
-                    )
-                )
-                    
-        let bft : Function = CNTKLib.ElementTimes(new Variable(ft), prevCellState)
+        let ft : Tensor = 
+            projectInput () 
+            + (createProjectionParam cellDim * stabilizedPrevOutput)
+            + (createDiagWeightParam cellDim .* stabilizedPrevCellState)
+            |> Tensor.sigmoid
+                        
+        let bft : Tensor = ft .* prevCellState.Tensor
 
-        let ct : Function = new Variable(bft) + new Variable(bit)
+        let ct : Tensor = bft + bit
 
         // Output gate
-        let ot : Function = 
-            CNTKLib.Sigmoid(
-                new Variable(
-                    new Variable (
-                        projectInput () + new Variable(createProjectionParam(cellDim) * new Variable(stabilizedPrevOutput))) + 
-                    new Variable (
-                        CNTKLib.ElementTimes(
-                            createDiagWeightParam(cellDim), 
-                            new Variable(Stabilize<'ElementType>(new Variable(ct), device))
-                            )
-                        )
-                    )
-                )
-        
-        let ht : Function = CNTKLib.ElementTimes(new Variable(ot), new Variable(CNTKLib.Tanh(new Variable(ct))))
+        let ot : Tensor = 
+            projectInput () 
+            + (createProjectionParam cellDim * stabilizedPrevOutput) 
+            + (createDiagWeightParam cellDim .* Fun (Stabilize<'ElementType>(ct.toVar, device)))
+            |> Tensor.sigmoid
+                        
+        let ht : Tensor = ot .* Tensor.tanh(ct)
 
-        let c : Function = ct
-        let h : Function = 
+        let c : Tensor = ct
+        let h : Tensor = 
             if (outputDim <> cellDim) 
-            then (createProjectionParam(outputDim) * new Variable(Stabilize<'ElementType>(new Variable(ht), device)))
+            then (createProjectionParam outputDim * Fun(Stabilize<'ElementType>(ht.toVar, device)))
             else ht
 
-        (h, c)
+        (h.toFun, c.toFun)
 
 let LSTMPComponentWithSelfStabilization<'ElementType>(
     input:Variable,
@@ -212,21 +182,20 @@ let LSTMPComponentWithSelfStabilization<'ElementType>(
         let dc = Variable.PlaceholderVariable(cellShape, input.DynamicAxes)
 
         let LSTMCell = LSTMPCellWithSelfStabilization<'ElementType>(input, dh, dc, device)
-        let actualDh = recurrenceHookH (new Variable(fst LSTMCell))
-        let actualDc = recurrenceHookC (new Variable(snd LSTMCell))
+        let actualDh = recurrenceHookH (var (fst LSTMCell))
+        let actualDc = recurrenceHookC (var (snd LSTMCell))
 
         // TODO check this, seems to involve some mutation
         // Form the recurrence loop by replacing the dh and dc placeholders with the actualDh and actualDc
         let replacement : IDictionary<Variable, Variable> =
             [
-                dh, new Variable(actualDh)
-                dc, new Variable(actualDc)
+                dh, var (actualDh)
+                dc, var (actualDc)
             ]
             |> dict
 
-        (fst LSTMCell).ReplacePlaceholders(replacement)
-            // new Dictionary<Variable, Variable> { { dh, actualDh }, { dc, actualDc } })
-
+        (fst LSTMCell).ReplacePlaceholders(replacement) |> ignore
+        
         LSTMCell
         //return new Tuple<Function, Function>(LSTMCell.Item1, LSTMCell.Item2);
 
@@ -328,8 +297,6 @@ let Train (device:DeviceDescriptor) =
     let miniBatchCount = 0
     let numEpochs = 5
 
-    let report = progress (trainer, outputFrequencyInMinibatches) 
-
     let rec learnEpoch (step,epoch) = 
 
         if epoch <= 0
@@ -348,14 +315,18 @@ let Train (device:DeviceDescriptor) =
 
             trainer.TrainMinibatch(arguments, device) |> ignore
 
-            report step |> printer
+            if step % outputFrequencyInMinibatches = 0
+            then
+                trainer
+                |> Minibatch.summary 
+                |> Minibatch.basicPrint        
             
             // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
             // Batching will not end. Each time minibatchSource completes an sweep (epoch),
             // the last minibatch data will be marked as end of a sweep. We use this flag
             // to count number of epochs.
             let epoch = 
-                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
+                if (Minibatch.isSweepEnd (minibatchData.Values))
                 then epoch - 1
                 else epoch
 
