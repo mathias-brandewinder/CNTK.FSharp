@@ -127,17 +127,55 @@ let basicMinibatchSummary (summary:TrainingMiniBatchSummary) =
         summary.Samples
         summary.Loss
         summary.Evaluation
+let inMemoryMinibatchHandler 
+        (config:Config) 
+        (spec:Specification) 
+        getData
+        =
+        let device = config.Device
+        let featureVariable = spec.Features
+        let labelVariable = spec.Labels
+        fun step ->
+            let isSweepEnd, featuresData, labelsData = getData step
+            let featureValue = Value.CreateBatch (featureVariable.Shape, featuresData, device)
+            let labelValue = Value.CreateBatch (labelVariable.Shape, labelsData, device)
+            let batch = 
+                [ 
+                    featureVariable, new MinibatchData(featureValue)
+                    labelVariable, new MinibatchData(labelValue)
+                ] 
+                |> dict
+            (isSweepEnd,batch)
+let fileMinibatchHandler 
+        (source:MinibatchSource) 
+        (featureStreamName:string, labelsStreamName:string) 
+        (config:Config) 
+        (spec:Specification) =
+        let device = config.Device
 
+        let input = spec.Features
+        let labels = spec.Labels
+        let featureStreamInfo = source.StreamInfo(featureStreamName)
+        let labelStreamInfo = source.StreamInfo(labelsStreamName)
+        let minibatchSize = uint32 (config.MinibatchSize)
+        fun _ -> 
+                let minibatchData = source.GetNextMinibatch(minibatchSize, device)
+                let batch = 
+                    [
+                        input, minibatchData.[featureStreamInfo]
+                        labels, minibatchData.[labelStreamInfo]
+                    ]
+                    |> dict
+                (isSweepEnd (minibatchData.Values),batch)
 type Learner () =
 
     let progress = new Event<TrainingMiniBatchSummary> ()
     member this.MinibatchProgress = progress.Publish
 
     member this.learn 
-        (source:MinibatchSource) 
-        (featureStreamName:string, labelsStreamName:string) 
         (config:Config) 
-        (spec:Specification) =
+        (spec:Specification) 
+        (nextBatch : int -> (bool*IDictionary<Variable, MinibatchData>)) =
 
         let device = config.Device
 
@@ -148,12 +186,6 @@ type Learner () =
         let parameterLearners = learning predictor config.Schedule     
         let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
         
-        let input = spec.Features
-        let labels = spec.Labels
-        let featureStreamInfo = source.StreamInfo(featureStreamName)
-        let labelStreamInfo = source.StreamInfo(labelsStreamName)
-        let minibatchSize = uint32 (config.MinibatchSize)
-
         let rec learnEpoch (step,epoch) = 
 
             minibatchSummary trainer
@@ -163,16 +195,8 @@ type Learner () =
             // we are done : return function
             then predictor
             else
+                let isSweepEnd,arguments = nextBatch step
                 let step = step + 1
-                let minibatchData = source.GetNextMinibatch(minibatchSize, device)
-
-                let arguments : IDictionary<Variable, MinibatchData> =
-                    [
-                        input, minibatchData.[featureStreamInfo]
-                        labels, minibatchData.[labelStreamInfo]
-                    ]
-                    |> dict
-
                 trainer.TrainMinibatch(arguments, device) |> ignore
                 
                 // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
@@ -180,7 +204,7 @@ type Learner () =
                 // the last minibatch data will be marked as end of a sweep. We use this flag
                 // to count number of epochs.
                 let epoch = 
-                    if isSweepEnd (minibatchData.Values)
+                    if isSweepEnd
                     then epoch - 1
                     else epoch
 

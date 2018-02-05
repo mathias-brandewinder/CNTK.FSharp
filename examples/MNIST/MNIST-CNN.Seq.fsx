@@ -86,7 +86,9 @@ let minibatchSource = textSource learningSource InfinitelyRepeat
 let trainer = Learner ()
 trainer.MinibatchProgress.Add(basicMinibatchSummary)
 
-let predictor = trainer.learn minibatchSource (featureStreamName,labelsStreamName) config spec
+let minibatchHandler = fileMinibatchHandler  minibatchSource (featureStreamName, labelsStreamName) config spec
+
+let predictor = trainer.learn config spec minibatchHandler
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
 
 predictor.Save(modelFile)
