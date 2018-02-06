@@ -288,7 +288,7 @@ module Sequential =
                     // the last minibatch data will be marked as end of a sweep. We use this flag
                     // to count number of epochs.
                     let epoch = 
-                        if isSweepEnd (minibatchData.Values)
+                        if Minibatch.isSweepEnd (minibatchData.Values)
                         then epoch - 1
                         else epoch
 
