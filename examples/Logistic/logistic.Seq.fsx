@@ -3,11 +3,12 @@ F# port of the original C# example from the CNTK docs:
 https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/LogisticRegression.cs
 *)
 
-// Use the CNTK.fsx file to load the dependencies.
-
-#load "../../CNTK.Sequential.fsx"
+#load "../../ScriptLoader.fsx"
 open CNTK
-open CNTK.Sequential
+
+#r "../../build/CNTK.FSharp.dll"
+open CNTK.FSharp
+open CNTK.FSharp.Sequential
 
 open System
 open System.Collections.Generic
@@ -98,10 +99,11 @@ let spec = {
 let learningSource: DataSource = {
     SourcePath = dataFile
     Streams = [
-              featureStreamName, inputDim
-              labelsStreamName, numOutputClasses
+        Stream.config(featureStreamName, inputDim)
+        Stream.config(labelsStreamName, numOutputClasses)
         ]
     }
+    
 let config = {
     MinibatchSize = 64
     Epochs = 10
@@ -119,9 +121,11 @@ let modelFile = Path.Combine(__SOURCE_DIRECTORY__, "logistic.model")
 predictor.Save(modelFile)
 
 let streams = 
-    learningSource.Streams
-    |> Seq.map (fun (name, dim) -> 
-        new StreamConfiguration(name, dim))
+    [
+        Stream.config(featureStreamName, inputDim)
+        Stream.config(labelsStreamName, numOutputClasses)
+    ]    
+    |> Seq.map (fun config -> config ()) 
     |> ResizeArray
 
 // validate the model: this still needs a lot of work to look decent

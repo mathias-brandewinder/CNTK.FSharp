@@ -6,13 +6,12 @@ CIFAR-10 data imported directly into the /examples directory, using the Python s
 supplied in the original CNTK repository.
 *)
 
-// Use the CNTK.fsx file to load the dependencies.
-
-#load "../CNTK.fsx"
-open System.Security.Cryptography.X509Certificates
+#load "../../ScriptLoader.fsx"
 open CNTK
 
-open System
+#r "../../build/CNTK.FSharp.dll"
+open CNTK.FSharp
+
 open System.IO
 open System.Collections.Generic
 
@@ -380,8 +379,6 @@ let minibatchSize = uint32 64
 let outputFrequencyInMinibatches = 20
 let miniBatchCount = 0
 
-let report = progress (trainer, outputFrequencyInMinibatches)
-
 let rec train step =
 
     let minibatchData = minibatchSource.GetNextMinibatch(minibatchSize, device)
@@ -401,8 +398,12 @@ let rec train step =
         trainer.TrainMinibatch(arguments, device) |> ignore
         
         let step = step + 1
-        report step |> printer
-
+        if step % outputFrequencyInMinibatches = 0
+        then
+            trainer
+            |> Minibatch.summary 
+            |> Minibatch.basicPrint
+            
         train step
 
 train 0

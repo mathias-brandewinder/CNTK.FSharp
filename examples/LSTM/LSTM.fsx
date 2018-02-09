@@ -6,10 +6,9 @@ https://github.com/Microsoft/CNTK/master/Examples/TrainingCSharp/Common/LSTMSequ
 #load "../../ScriptLoader.fsx"
 open CNTK
 
-#load "../../CNTK.FSharp/Core.fs"
+#r "../../build/CNTK.FSharp.dll"
 open CNTK.FSharp
 
-open System
 open System.IO
 open System.Collections.Generic
 

@@ -6,11 +6,10 @@ https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/Log
 #load "../../ScriptLoader.fsx"
 open CNTK
 
-#load "../../CNTK.FSharp/Core.fs"
+#r "../../build/CNTK.FSharp.dll"
 open CNTK.FSharp
 
 open System
-open System.IO
 open System.Collections.Generic
 
 // Creating a synthetic dataset

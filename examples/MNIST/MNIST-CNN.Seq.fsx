@@ -8,7 +8,6 @@ open CNTK
 
 #r "../../build/CNTK.FSharp.dll"
 open CNTK.FSharp
-open CNTK.FSharp.Readers
 open CNTK.FSharp.Sequential
  
 open System.IO
