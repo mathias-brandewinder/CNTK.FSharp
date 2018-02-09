@@ -8,21 +8,29 @@ module Sequential =
 
     type Computation = DeviceDescriptor -> Variable -> Function
 
+    type Specification = {
+        Features: Variable
+        Labels: Variable
+        Model: Computation
+        Loss: Loss
+        Eval: Loss
+        }
+
     [<RequireQualifiedAccess>]
     module Layer = 
 
-        // Combine 2 Computation Layers into 1
+        /// Combine 2 Computation Layers into 1
         let stack (next:Computation) (curr:Computation) : Computation =
             fun device ->
                 fun variable ->
                     let intermediate = new Variable(curr device variable)
                     next device intermediate
 
-        // combine a sequence of Computation Layers into 1
+        /// Combine a sequence of Computation Layers into 1
         let sequence (computations: Computation seq) =
             computations
             |> Seq.reduce (fun acc c -> stack c acc)
-         
+        
         let scale<'T> (scalar:'T) : Computation = 
             fun device ->
                 fun input ->
@@ -151,38 +159,7 @@ module Sequential =
                         shape [ stride.Horizontal; stride.Vertical ], 
                         [| true |]
                         )
-
-    type DataSource = {
-        SourcePath: string
-        Streams: (string * int) seq
-        }
-
-    type StreamProcessing = 
-        | FullDataSweep
-        | InfinitelyRepeat
-
-    let textSource (data:DataSource) =
-        let streams = 
-            data.Streams
-            |> Seq.map (fun (name, dim) -> 
-                new StreamConfiguration(name, dim))
-            |> ResizeArray
-        fun (processing: StreamProcessing) ->
-            MinibatchSource.TextFormatMinibatchSource(
-                data.SourcePath, 
-                streams, 
-                match processing with
-                | FullDataSweep -> MinibatchSource.FullDataSweep
-                | InfinitelyRepeat -> MinibatchSource.InfinitelyRepeat)
             
-    type Specification = {
-        Features: Variable
-        Labels: Variable
-        Model: Computation
-        Loss: Loss
-        Eval: Loss
-        }
-
     type Schedule = {
         Rate: float
         MinibatchSize: int

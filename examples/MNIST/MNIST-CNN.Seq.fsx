@@ -6,9 +6,9 @@ https://github.com/Microsoft/CNTK/blob/master/Examples/TrainingCSharp/Common/MNI
 #load "../../ScriptLoader.fsx"
 open CNTK
 
-#load "../../CNTK.FSharp/Core.fs"
-#load "../../CNTK.FSharp/Sequential.fs"
-open CNTK.FSharp.Core
+#r "../../build/CNTK.FSharp.dll"
+open CNTK.FSharp
+open CNTK.FSharp.Readers
 open CNTK.FSharp.Sequential
  
 open System.IO
@@ -69,8 +69,8 @@ let labelsStreamName = "labels"
 let learningSource: DataSource = {
     SourcePath = Path.Combine(ImageDataFolder, "Train_cntk_text.txt")
     Streams = [
-        featureStreamName, imageSize
-        labelsStreamName, numClasses
+        Stream.config(featureStreamName, imageSize)
+        Stream.config(labelsStreamName, numClasses)
         ]
     }
 
@@ -96,8 +96,8 @@ predictor.Save(modelFile)
 let testingSource: DataSource = {
     SourcePath = Path.Combine(ImageDataFolder, "Test_cntk_text.txt")
     Streams = [
-        featureStreamName, imageSize
-        labelsStreamName, numClasses
+        Stream.config(featureStreamName, imageSize)
+        Stream.config(labelsStreamName, numClasses)
         ]
     }
 
@@ -171,7 +171,7 @@ let ValidateModelWithMinibatchSource(
 
                 let errors = errors + misMatches
 
-                if isSweepEnd (minibatchData.Values)
+                if Minibatch.isSweepEnd (minibatchData.Values)
                 // if (int total > maxCount)
                 then (total,errors)
                 else countErrors (total,errors)

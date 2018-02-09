@@ -45,6 +45,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Core.fs" />
+    <Compile Include="Readers.fs" />
     <Compile Include="Sequential.fs" />
   </ItemGroup>
   <PropertyGroup>
