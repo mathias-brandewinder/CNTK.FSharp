@@ -19,12 +19,15 @@ v2 -               f5:dense ---- f7:output
                    f6:dense
 *)
 
-#load "../CNTK.fsx"
+#load "../ScriptLoader.fsx"
 open CNTK
 
-open System
+#r "../build/CNTK.FSharp.dll"
+open CNTK.FSharp
+
 open System.IO
 open System.Collections.Generic
+
 
 let var f = new Variable(f)
 
@@ -32,10 +35,6 @@ let v1 = Variable.InputVariable(shape [ 2 ], DataType.Float, "v1")
 let v2 = Variable.InputVariable(shape [ 3 ], DataType.Float, "v2")
 
 // lifted from other samples
-
-let MiniBatchDataIsSweepEnd(minibatchValues:seq<MinibatchData>) =
-    minibatchValues 
-    |> Seq.exists(fun a -> a.sweepEnd)
 
 let fullyConnectedLinearLayer(
     input:Variable, 
@@ -219,7 +218,7 @@ let createFile () =
         )
     |> fun content -> System.IO.File.WriteAllLines(__SOURCE_DIRECTORY__ + "/data", content)
 
-// createFile () to generate data file
+// createFile () //to generate data file
 
 // learn
 
@@ -263,9 +262,63 @@ let trainer = Trainer.CreateTrainer(output, trainingLoss, prediction, parameterL
 let minibatchSize = uint32 64
 let outputFrequencyInMinibatches = 20
 
+// output.Parameters () |> Seq.toArray
+// output.Arguments |> Seq.toArray // variables
+// output.Inputs |> Seq.toArray
+// output.Outputs |> Seq.toArray
+// output.Output
+
+type Specification = {
+    Features: Variable seq
+    Labels: Variable
+    Model: Function
+    Loss: Loss
+    Eval: Loss
+    }
+
+module Minibatch = 
+
+    let prepare 
+        (source: MinibatchSource)
+        (spec:Specification)
+        (mapping: Map<string,string>)
+        (batch:UnorderedMapStreamInformationMinibatchData)
+        : IDictionary<Variable,MinibatchData> =
+            let fromStream info = batch.[info]
+            [
+                for feature in spec.Features ->
+                    feature, 
+                    source.StreamInfo(mapping.[feature.Name]) 
+                    |> fromStream
+                yield 
+                    spec.Labels, source.StreamInfo(mapping.[spec.Labels.Name]) 
+                    |> fromStream      
+            ]
+            |> dict
+
+    let trainOn (trainer:Trainer) (device:DeviceDescriptor) (minibatch:IDictionary<Variable,MinibatchData>) =
+        trainer.TrainMinibatch(minibatch, device)
+
+let map = 
+    [
+        "v1", "feature1"
+        "v2", "feature2"
+        "labels", "labels"
+    ] 
+    |> Map.ofSeq
+
+let spec = {
+    Features = [ v1; v2 ]
+    Labels = labels
+    Model = output
+    Loss = CrossEntropyWithSoftmax
+    Eval = ClassificationError
+    }
+
 let learn epochs =
 
-    let report = progress (trainer, outputFrequencyInMinibatches)
+    let prepare = Minibatch.prepare minibatchSource spec map
+    let train = Minibatch.trainOn trainer device
 
     let rec learnEpoch (step,epoch) = 
 
@@ -274,26 +327,24 @@ let learn epochs =
         then ignore ()
         else
             let step = step + 1
-            let minibatchData = minibatchSource.GetNextMinibatch(minibatchSize, device)
 
-            let arguments : IDictionary<Variable, MinibatchData> =
-                [
-                    v1, minibatchData.[feature1StreamInfo]
-                    v2, minibatchData.[feature2StreamInfo]
-                    labels, minibatchData.[labelStreamInfo]
-                ]
-                |> dict
+            let minibatch = minibatchSource.GetNextMinibatch(minibatchSize, device)
+            
+            let _ = 
+                minibatch
+                |> prepare
+                |> train
 
-            trainer.TrainMinibatch(arguments, device) |> ignore
-
-            report step |> printer
+            trainer
+            |> Minibatch.summary 
+            |> Minibatch.basicPrint        
             
             // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
             // Batching will not end. Each time minibatchSource completes an sweep (epoch),
             // the last minibatch data will be marked as end of a sweep. We use this flag
             // to count number of epochs.
             let epoch = 
-                if (MiniBatchDataIsSweepEnd(minibatchData.Values))
+                if (Minibatch.isSweepEnd(minibatch))
                 then epoch - 1
                 else epoch
 
