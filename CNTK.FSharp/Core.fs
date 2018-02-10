@@ -111,8 +111,8 @@ module Core =
     [<RequireQualifiedAccess>]
     module Minibatch =
 
-        let isSweepEnd (minibatchValues: seq<MinibatchData>) =
-            minibatchValues 
+        let isSweepEnd (minibatch: UnorderedMapStreamInformationMinibatchData) =
+            minibatch.Values
             |> Seq.exists(fun a -> a.sweepEnd)
 
         type TrainingSummary = {

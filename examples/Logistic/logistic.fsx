@@ -57,7 +57,7 @@ let GenerateValueData(sampleSize:int, inputDim:int, numOutputClasses:int, device
     let labelValue = Value.CreateBatch (shape [ numOutputClasses ], oneHotLabels, device)
 
     featureValue, labelValue
-    
+ 
 // Creating and training the model
 
 let inputDim = 3
