@@ -182,40 +182,9 @@ module Sequential =
                 ])
         parameterLearners
 
-    type TrainingMiniBatchSummary = {
-        Loss:float
-        Evaluation:float
-        Samples:uint32
-        TotalSamples:uint32
-        }
-
-    let minibatchSummary (trainer:Trainer) =
-        if trainer.PreviousMinibatchSampleCount () <> (uint32 0)
-        then
-            {
-                Loss = trainer.PreviousMinibatchLossAverage ()
-                Evaluation = trainer.PreviousMinibatchEvaluationAverage ()
-                Samples = trainer.PreviousMinibatchSampleCount ()
-                TotalSamples = trainer.TotalNumberOfSamplesSeen ()
-            }
-        else
-            {
-                Loss = Double.NaN
-                Evaluation = Double.NaN
-                Samples = trainer.PreviousMinibatchSampleCount ()
-                TotalSamples = trainer.TotalNumberOfSamplesSeen ()
-            }
-
-    let basicMinibatchSummary (summary:TrainingMiniBatchSummary) =
-        printfn "Total: %-8i Batch: %3i Loss: %.3f Eval: %.3f"
-            summary.TotalSamples
-            summary.Samples
-            summary.Loss
-            summary.Evaluation
-
     type Learner () =
 
-        let progress = new Event<TrainingMiniBatchSummary> ()
+        let progress = new Event<Minibatch.TrainingSummary> ()
         member this.MinibatchProgress = progress.Publish
 
         member this.learn 
@@ -241,7 +210,7 @@ module Sequential =
 
             let rec learnEpoch (step,epoch) = 
 
-                minibatchSummary trainer
+                Minibatch.summary trainer
                 |> progress.Trigger
 
                 if epoch <= 0
