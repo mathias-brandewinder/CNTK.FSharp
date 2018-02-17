@@ -1,38 +1,48 @@
 ﻿namespace CNTK.FSharp
 
-[<AutoOpen>]
-module Readers = 
+[<RequireQualifiedAccess>]
+module TextFormat =
 
     open CNTK
 
-    type StreamConfig = unit -> StreamConfiguration
-
-    type DataSource = {
-        SourcePath: string
-        Streams: StreamConfig seq
+    /// Map a Variable to its name in the data file.
+    type InputMapping = {
+        Variable:Variable
+        SourceName:string
         }
 
-    type Stream () =
-        static member config (name:string,dim:int) = 
-            fun () -> new StreamConfiguration (name,dim)
-        static member config (name:string,dim:int,sparse:bool) = 
-            fun () -> new StreamConfiguration (name,dim,sparse)
-        static member config (name:string,dim:int,sparse:bool,alias:string) = 
-            fun () -> new StreamConfiguration (name,dim,sparse,alias)
-        
-    type StreamProcessing = 
-        | FullDataSweep
-        | InfinitelyRepeat
+    /// Map all model variables to their corresponding name
+    /// in the data file.
+    type InputMappings = {
+        Features: InputMapping seq
+        Labels: InputMapping
+        } with
+        member this.Mappings =
+            seq {
+                yield! this.Features
+                yield this.Labels
+                }
 
-    let textSource (data:DataSource) =
-        let streams = 
-            data.Streams
-            |> Seq.map (fun f -> f ()) 
-            |> ResizeArray
-        fun (processing: StreamProcessing) ->
-            MinibatchSource.TextFormatMinibatchSource(
-                data.SourcePath, 
-                streams, 
-                match processing with
-                | FullDataSweep -> MinibatchSource.FullDataSweep
-                | InfinitelyRepeat -> MinibatchSource.InfinitelyRepeat)
+    let streams (mappings:InputMappings) =
+        let size (v:Variable) = 
+            v.Shape.Dimensions 
+            |> Seq.fold (*) 1
+        mappings.Mappings
+        |> Seq.map (fun mapping ->
+            new StreamConfiguration(
+                mapping.SourceName, 
+                mapping.Variable |> size |> uint32,
+                mapping.Variable.IsSparse)
+            )
+        |> ResizeArray
+
+    /// Create a MinibatchSource from a file.
+    let source (filePath:string, mappings:InputMappings) =
+        let streams = streams mappings
+        // TODO: include read strategy,
+        // ex: full sweep vs batch size, randomization, ...
+        MinibatchSource.TextFormatMinibatchSource(
+            filePath,
+            streams,
+            MinibatchSource.InfinitelyRepeat)         
+    

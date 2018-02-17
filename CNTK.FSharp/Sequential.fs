@@ -2,7 +2,6 @@
 
 module Sequential =
 
-    open System
     open System.Collections.Generic
     open CNTK
 
@@ -181,6 +180,20 @@ module Sequential =
                     Learner.SGDLearner(predictor.Parameters(), learningRatePerSample) 
                 ])
         parameterLearners
+
+    type TextFormatSource = {
+        FilePath:string
+        Features:string
+        Labels:string
+        } with
+        member this.Mappings (spec:Specification) : (string * TextFormat.InputMappings) =
+            this.FilePath,
+            {
+                Features = [
+                    { Variable = spec.Features; SourceName = this.Features }
+                ]
+                Labels = { Variable = spec.Labels; SourceName = this.Labels }
+            }
 
     type Learner () =
 

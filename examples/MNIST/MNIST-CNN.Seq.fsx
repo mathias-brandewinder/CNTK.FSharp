@@ -12,7 +12,6 @@ open CNTK.FSharp.Sequential
  
 open System.IO
 
-let imageSize = 28 * 28
 let numClasses = 10
 let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float)
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float)
@@ -65,14 +64,6 @@ let ImageDataFolder = __SOURCE_DIRECTORY__
 let featureStreamName = "features"
 let labelsStreamName = "labels"
 
-let learningSource: DataSource = {
-    SourcePath = Path.Combine(ImageDataFolder, "Train_cntk_text.txt")
-    Streams = [
-        Stream.config(featureStreamName, imageSize)
-        Stream.config(labelsStreamName, numClasses)
-        ]
-    }
-
 // set per sample learning rate
 let config = {
     MinibatchSize = 64
@@ -80,10 +71,17 @@ let config = {
     Device = DeviceDescriptor.CPUDevice
     Schedule = { Rate = 0.003125; MinibatchSize = 1 }
     }
-let minibatchSource = textSource learningSource InfinitelyRepeat
+
+let source : TextFormatSource = {
+    FilePath = Path.Combine(ImageDataFolder, "Train_cntk_text.txt")
+    Features = featureStreamName
+    Labels = labelsStreamName
+    }
+
+let minibatchSource = TextFormat.source (source.Mappings spec)
 
 let trainer = Learner ()
-trainer.MinibatchProgress.Add(basicMinibatchSummary)
+trainer.MinibatchProgress.Add(Minibatch.basicPrint)
 
 let predictor = trainer.learn minibatchSource (featureStreamName,labelsStreamName) config spec
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"MNISTConvolution.model")
@@ -92,15 +90,13 @@ predictor.Save(modelFile)
 
 // validate the model: this still needs a lot of work to look decent
 
-let testingSource: DataSource = {
-    SourcePath = Path.Combine(ImageDataFolder, "Test_cntk_text.txt")
-    Streams = [
-        Stream.config(featureStreamName, imageSize)
-        Stream.config(labelsStreamName, numClasses)
-        ]
+let testingSource = {
+    FilePath = Path.Combine(ImageDataFolder, "Test_cntk_text.txt")
+    Features = featureStreamName
+    Labels = labelsStreamName
     }
 
-let testMinibatchSource = textSource testingSource FullDataSweep
+let testMinibatchSource = TextFormat.source (testingSource.Mappings spec)
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
@@ -170,7 +166,7 @@ let ValidateModelWithMinibatchSource(
 
                 let errors = errors + misMatches
 
-                if Minibatch.isSweepEnd (minibatchData.Values)
+                if Minibatch.isSweepEnd (minibatchData)
                 // if (int total > maxCount)
                 then (total,errors)
                 else countErrors (total,errors)
