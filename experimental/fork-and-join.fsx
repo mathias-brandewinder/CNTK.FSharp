@@ -20,6 +20,7 @@ v2 -               f5:dense ---- f7:output
 *)
 
 #load "../ScriptLoader.fsx"
+open System.Runtime.Remoting
 open System
 open CNTK
 
@@ -334,6 +335,20 @@ let evaluate
 
         outputDataMap
 
+let getDense (variable:Variable) (data:Value) =
+    match variable.DataType with
+    | DataType.Double -> 
+        data.GetDenseData<float>(variable) 
+        |> Seq.map (Seq.map float >> Array.ofSeq)
+        |> Array.ofSeq
+    | DataType.Float -> 
+        data.GetDenseData<single>(variable) 
+        |> Seq.map (Seq.map float >> Array.ofSeq)
+        |> Array.ofSeq
+    | DataType.Float16 -> failwith "unsupported data type"
+    | DataType.UChar -> failwith "unsupported data type"
+    | DataType.Unknown -> failwith "unsupported data type"
+
 let ValidateModelWithMinibatchSource (
     modelFile:string, 
     mappings:TextFormat.NameMappings,
@@ -364,20 +379,27 @@ let ValidateModelWithMinibatchSource (
                 let total = total + minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].numberOfSamples
                 
                 // find the index of the largest label value
-                let labelData = minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].data.GetDenseData<float32>(mappings.Labels.Variable)
+
+                let labelData = 
+                    minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].data
+                    |> getDense mappings.Labels.Variable
+
                 let expectedLabels = 
                     labelData 
                     |> Seq.map (fun l ->                         
                         let largest = l |> Seq.max
-                        l.IndexOf largest
+                        l |> Array.findIndex ((=) largest)
                         )
 
-                let outputData = outputDataMap.[mappings.Labels.Variable].GetDenseData<float32>(mappings.Labels.Variable)
+                let outputData = 
+                    outputDataMap.[mappings.Labels.Variable]
+                    |> getDense mappings.Labels.Variable
+                
                 let actualLabels =
                     outputData 
                     |> Seq.map (fun l ->                         
                         let largest = l |> Seq.max
-                        l.IndexOf largest
+                        l |> Array.findIndex ((=) largest)
                         )
 
                 let misMatches = 
