@@ -45,4 +45,46 @@ module TextFormat =
             filePath,
             streams,
             MinibatchSource.InfinitelyRepeat)         
-    
+
+    /// Map one variable name to the corresponding name
+    /// in the data file.
+    type NameMapping = {
+        VariableName:string
+        SourceName:string
+        }
+
+    /// Map all Variables to their corresponding names
+    /// in the data file.
+    type NameMappings = {
+        Features : NameMapping seq
+        Labels : NameMapping
+        }
+
+    let extractMappings (desc:NameMappings) (model:Function) =
+        
+        let extractFeature name = 
+            model.Inputs
+            |> Seq.filter (fun i -> i.Name = name)
+            |> Seq.exactlyOne
+        let extractLabel name = 
+            model.Outputs
+            |> Seq.filter (fun i -> i.Name = name)
+            |> Seq.exactlyOne
+        
+        let mappings : InputMappings = {
+            Features = 
+                desc.Features
+                |> Seq.map (fun mapping -> 
+                    { 
+                        Variable = extractFeature mapping.VariableName
+                        SourceName = mapping.SourceName } 
+                    )
+                |> Seq.toList
+            Labels =
+                { 
+                    Variable = extractLabel desc.Labels.VariableName
+                    SourceName = desc.Labels.SourceName
+                }
+            }
+
+        mappings

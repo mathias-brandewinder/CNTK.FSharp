@@ -20,6 +20,7 @@ v2 -               f5:dense ---- f7:output
 *)
 
 #load "../ScriptLoader.fsx"
+open System
 open CNTK
 
 #r "../build/CNTK.FSharp.dll"
@@ -227,25 +228,6 @@ let labels = CNTKLib.InputVariable(shape [ 3 ], DataType.Float, "labels")
 let trainingLoss = CNTKLib.CrossEntropyWithSoftmax(var (output), labels, "lossFunction")
 let prediction = CNTKLib.ClassificationError(var (output), labels, "classificationError")
 
-let streamConfigurations = 
-    ResizeArray<StreamConfiguration>(
-        [
-            new StreamConfiguration("feature1", 2)    
-            new StreamConfiguration("feature2", 3)
-            new StreamConfiguration("labels", 3)
-        ]
-        )
-
-let minibatchSource = 
-    MinibatchSource.TextFormatMinibatchSource(
-        Path.Combine(__SOURCE_DIRECTORY__, "data"), 
-        streamConfigurations, 
-        MinibatchSource.InfinitelyRepeat)
-
-let feature1StreamInfo = minibatchSource.StreamInfo("feature1")
-let feature2StreamInfo = minibatchSource.StreamInfo("feature2")
-let labelStreamInfo = minibatchSource.StreamInfo("labels")
-
 // set per sample learning rate
 let learningRatePerSample : CNTK.TrainingParameterScheduleDouble = 
     new CNTK.TrainingParameterScheduleDouble(0.001, uint32 1)
@@ -259,66 +241,43 @@ let parameterLearners =
 
 let trainer = Trainer.CreateTrainer(output, trainingLoss, prediction, parameterLearners)
 
-let minibatchSize = uint32 64
-let outputFrequencyInMinibatches = 20
-
-// output.Parameters () |> Seq.toArray
-// output.Arguments |> Seq.toArray // variables
-// output.Inputs |> Seq.toArray
-// output.Outputs |> Seq.toArray
-// output.Output
-
-type Specification = {
-    Features: Variable seq
-    Labels: Variable
-    Model: Function
-    Loss: Loss
-    Eval: Loss
-    }
-
+[<RequireQualifiedAccess>]
 module Minibatch = 
 
-    let prepare 
-        (source: MinibatchSource)
-        (spec:Specification)
-        (mapping: Map<string,string>)
-        (batch:UnorderedMapStreamInformationMinibatchData)
-        : IDictionary<Variable,MinibatchData> =
-            let fromStream info = batch.[info]
-            [
-                for feature in spec.Features ->
-                    feature, 
-                    source.StreamInfo(mapping.[feature.Name]) 
-                    |> fromStream
-                yield 
-                    spec.Labels, source.StreamInfo(mapping.[spec.Labels.Name]) 
-                    |> fromStream      
-            ]
-            |> dict
+    let train
+        (device:DeviceDescriptor)
+        (trainer:Trainer)
+        (source:MinibatchSource)
+        (mappings:TextFormat.InputMappings)
+        (minibatchSize:int) =
+        
+            let minibatch = source.GetNextMinibatch(uint32 minibatchSize, device)
+            
+            let minibatchData = 
+                mappings.Mappings
+                |> Seq.map (fun mapping ->
+                    mapping.Variable,
+                    minibatch.[source.StreamInfo(mapping.SourceName)]
+                    )
+                |> dict
 
-    let trainOn (trainer:Trainer) (device:DeviceDescriptor) (minibatch:IDictionary<Variable,MinibatchData>) =
-        trainer.TrainMinibatch(minibatch, device)
+            trainer.TrainMinibatch(minibatchData, device)
+            |> ignore
+            
+            Minibatch.isSweepEnd(minibatch)
 
-let map = 
-    [
-        "v1", "feature1"
-        "v2", "feature2"
-        "labels", "labels"
-    ] 
-    |> Map.ofSeq
-
-let spec = {
-    Features = [ v1; v2 ]
-    Labels = labels
-    Model = output
-    Loss = CrossEntropyWithSoftmax
-    Eval = ClassificationError
+let mappings : TextFormat.InputMappings = {
+    Features = 
+        [
+            { Variable = v1; SourceName = "feature1" }
+            { Variable = v2; SourceName = "feature2" }
+        ]
+    Labels = { Variable = labels; SourceName = "labels" }
     }
 
-let learn epochs =
+let minibatchSource = TextFormat.source (Path.Combine(__SOURCE_DIRECTORY__, "data"), mappings)
 
-    let prepare = Minibatch.prepare minibatchSource spec map
-    let train = Minibatch.trainOn trainer device
+let learn epochs =
 
     let rec learnEpoch (step,epoch) = 
 
@@ -327,24 +286,15 @@ let learn epochs =
         then ignore ()
         else
             let step = step + 1
-
-            let minibatch = minibatchSource.GetNextMinibatch(minibatchSize, device)
             
-            let _ = 
-                minibatch
-                |> prepare
-                |> train
+            let endSweep = Minibatch.train device trainer minibatchSource mappings 32
 
             trainer
             |> Minibatch.summary 
             |> Minibatch.basicPrint        
             
-            // MinibatchSource is created with MinibatchSource.InfinitelyRepeat.
-            // Batching will not end. Each time minibatchSource completes an sweep (epoch),
-            // the last minibatch data will be marked as end of a sweep. We use this flag
-            // to count number of epochs.
             let epoch = 
-                if (Minibatch.isSweepEnd(minibatch))
+                if endSweep
                 then epoch - 1
                 else epoch
 
@@ -352,66 +302,41 @@ let learn epochs =
 
     learnEpoch (0,epochs)
 
-let epochs = 50
+let epochs = 10
 learn epochs
 
 output.Save(__SOURCE_DIRECTORY__ + "/model")
 
-
-
 // validate the model
-let minibatchSourceNewModel = 
-    MinibatchSource.TextFormatMinibatchSource(
-        Path.Combine(__SOURCE_DIRECTORY__ + "/data"), 
-        streamConfigurations, 
-        MinibatchSource.FullDataSweep)
 
-// broken: can't retrieve the inputs!?
-let ValidateModelWithMinibatchSource(
+let ValidateModelWithMinibatchSource (
     modelFile:string, 
-    testMinibatchSource:MinibatchSource,
-    outputName:string,
+    mappings:TextFormat.NameMappings,
     device:DeviceDescriptor, 
     maxCount:int
     ) =
 
         let model : Function = Function.Load(modelFile, device)
+        let mappings = TextFormat.extractMappings mappings model 
 
-        let feat1 = 
-            model.Inputs
-            |> Seq.filter (fun i -> i.Name = "v1")
-            |> Seq.exactlyOne
-
-        let feat2 = 
-            model.Inputs
-            |> Seq.filter (fun i -> i.Name = "v2")
-            |> Seq.exactlyOne
-
-        let labelOutput = 
-            model.Outputs 
-            |> Seq.filter (fun o -> o.Name = outputName)
-            |> Seq.exactlyOne
-
-        let feature1StreamInfo = testMinibatchSource.StreamInfo("feature1")
-        let feature2StreamInfo = testMinibatchSource.StreamInfo("feature2")
-        let labelStreamInfo = testMinibatchSource.StreamInfo("labels")
-
+        let validationSource = 
+            TextFormat.source 
+                (Path.Combine(__SOURCE_DIRECTORY__ + "/data"), mappings)
+        
         let batchSize = 50
 
         let rec countErrors (total,errors) =
 
             printfn "Total: %i; Errors: %i" total errors
 
-            let minibatchData = testMinibatchSource.GetNextMinibatch((uint32)batchSize, device)
-
-            if (minibatchData = null || minibatchData.Count = 0)
+            let minibatchData = validationSource.GetNextMinibatch((uint32)batchSize, device)
+            
+            if (isNull minibatchData || minibatchData.Count = 0)
             then (total,errors)        
             else
-
-                let total = total + minibatchData.[labelStreamInfo].numberOfSamples
-
+                let total = total + minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].numberOfSamples
                 // find the index of the largest label value
-                let labelData = minibatchData.[labelStreamInfo].data.GetDenseData<float32>(labelOutput)
+                let labelData = minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].data.GetDenseData<float32>(mappings.Labels.Variable)
                 let expectedLabels = 
                     labelData 
                     |> Seq.map (fun l ->                         
@@ -420,21 +345,23 @@ let ValidateModelWithMinibatchSource(
                         )
 
                 let inputDataMap = 
-                    [
-                        feat1, minibatchData.[feature1StreamInfo].data
-                        feat2, minibatchData.[feature2StreamInfo].data
-                    ]
+                    mappings.Features
+                    |> Seq.map (fun mapping -> 
+                        let streamInfo = validationSource.StreamInfo(mapping.SourceName)
+                        mapping.Variable,
+                        minibatchData.[streamInfo].data
+                        )
                     |> dataMap
 
-                let outputDataMap = 
+                let outputDataMap =                     
                     [ 
-                        labelOutput, null 
+                        mappings.Labels.Variable, null
                     ] 
                     |> dataMap
                     
                 model.Evaluate(inputDataMap, outputDataMap, device)
 
-                let outputData = outputDataMap.[labelOutput].GetDenseData<float32>(labelOutput)
+                let outputData = outputDataMap.[mappings.Labels.Variable].GetDenseData<float32>(mappings.Labels.Variable)
                 let actualLabels =
                     outputData 
                     |> Seq.map (fun l ->                         
@@ -455,11 +382,18 @@ let ValidateModelWithMinibatchSource(
 
         countErrors (uint32 0,0)
 
+let nameMappings : TextFormat.NameMappings = {
+    Features = [ 
+        { VariableName = "v1"; SourceName = "feature1" }
+        { VariableName = "v2"; SourceName = "feature2" }        
+        ] 
+    Labels = { VariableName = "output"; SourceName = "labels" }
+    }
+
 let total,errors = 
     ValidateModelWithMinibatchSource(
         (__SOURCE_DIRECTORY__ + "/model"), 
-        minibatchSourceNewModel,
-        "output",
+        nameMappings,
         device,
         1000)
 
