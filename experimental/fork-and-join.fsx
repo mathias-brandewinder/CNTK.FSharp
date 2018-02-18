@@ -309,6 +309,31 @@ output.Save(__SOURCE_DIRECTORY__ + "/model")
 
 // validate the model
 
+let evaluate 
+    (model:Function)
+    (source:MinibatchSource)
+    (minibatch:UnorderedMapStreamInformationMinibatchData) 
+    (mappings:TextFormat.InputMappings) =
+
+        let inputDataMap = 
+            mappings.Features
+            |> Seq.map (fun mapping -> 
+                let streamInfo = source.StreamInfo(mapping.SourceName)
+                mapping.Variable,
+                minibatch.[streamInfo].data
+                )
+            |> dataMap
+
+        let outputDataMap =                     
+            [ 
+                mappings.Labels.Variable, null
+            ] 
+            |> dataMap
+            
+        model.Evaluate(inputDataMap, outputDataMap, device)
+
+        outputDataMap
+
 let ValidateModelWithMinibatchSource (
     modelFile:string, 
     mappings:TextFormat.NameMappings,
@@ -334,7 +359,10 @@ let ValidateModelWithMinibatchSource (
             if (isNull minibatchData || minibatchData.Count = 0)
             then (total,errors)        
             else
+                let outputDataMap = evaluate model validationSource minibatchData mappings
+
                 let total = total + minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].numberOfSamples
+                
                 // find the index of the largest label value
                 let labelData = minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].data.GetDenseData<float32>(mappings.Labels.Variable)
                 let expectedLabels = 
@@ -343,23 +371,6 @@ let ValidateModelWithMinibatchSource (
                         let largest = l |> Seq.max
                         l.IndexOf largest
                         )
-
-                let inputDataMap = 
-                    mappings.Features
-                    |> Seq.map (fun mapping -> 
-                        let streamInfo = validationSource.StreamInfo(mapping.SourceName)
-                        mapping.Variable,
-                        minibatchData.[streamInfo].data
-                        )
-                    |> dataMap
-
-                let outputDataMap =                     
-                    [ 
-                        mappings.Labels.Variable, null
-                    ] 
-                    |> dataMap
-                    
-                model.Evaluate(inputDataMap, outputDataMap, device)
 
                 let outputData = outputDataMap.[mappings.Labels.Variable].GetDenseData<float32>(mappings.Labels.Variable)
                 let actualLabels =
