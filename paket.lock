@@ -7,4 +7,4 @@ NUGET
     CNTK.Deps.MKL (2.4)
     CNTK.Deps.OpenCV.Zip (2.4)
     FAKE (4.64.4)
-    FSharp.Core (4.3.4)
+    FSharp.Core (4.1.18)
