@@ -18,7 +18,7 @@ Target "Clean" (fun _ ->
     )
 
 Target "Build" (fun _ ->
-    MSBuildRelease buildDir "Rebuild" project
+    MSBuildReleaseExt buildDir ["Platform", "x64"] "Rebuild" project
     |> Log "Build Output: "
     )
 
