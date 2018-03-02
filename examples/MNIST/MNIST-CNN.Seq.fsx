@@ -13,7 +13,7 @@ open CNTK.FSharp.Sequential
 open System.IO
 
 let numClasses = 10
-let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float)
+let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float, "input")
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float)
 
 let network : Computation =
@@ -90,29 +90,37 @@ predictor.Save(modelFile)
 
 // validate the model: this still needs a lot of work to look decent
 
-let testingSource = {
-    FilePath = Path.Combine(ImageDataFolder, "Test_cntk_text.txt")
-    Features = featureStreamName
-    Labels = labelsStreamName
-    }
-
-let testMinibatchSource = TextFormat.source (testingSource.Mappings spec)
-
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
-    testMinibatchSource:MinibatchSource,
-    featureInputName:string, 
-    labelInputName:string, 
-    device:DeviceDescriptor, 
-    maxCount:int
+    textSource:TextFormatSource,
+    device:DeviceDescriptor
     ) =
 
         let model : Function = Function.Load(modelFile, device)
-        let imageInput = model.Arguments.[0]
-        let labelOutput = model.Output
 
-        let featureStreamInfo = testMinibatchSource.StreamInfo(featureInputName)
-        let labelStreamInfo = testMinibatchSource.StreamInfo(labelInputName)
+        let imageInput = 
+            model.Inputs
+            |> Seq.filter (fun i -> i.Name = "input")
+            |> Seq.exactlyOne
+
+        printfn "Input %s" (imageInput.Name)
+
+        let labelOutput = model.Output
+        printfn "Label %s" (labelOutput.Name)
+
+        let nameMappings : TextFormat.NameMappings = {
+            Features = [ 
+                { VariableName = imageInput.Name; SourceName = textSource.Features }
+                ] 
+            Labels = { VariableName = labelOutput.Name; SourceName = textSource.Labels }
+            }
+
+        let mappings = TextFormat.extractMappings nameMappings model 
+        
+        let testMinibatchSource = TextFormat.source (textSource.FilePath, mappings)
+
+        let featureStreamInfo = testMinibatchSource.StreamInfo(textSource.Features)
+        let labelStreamInfo = testMinibatchSource.StreamInfo(textSource.Labels)
 
         let batchSize = 50
 
@@ -167,18 +175,21 @@ let ValidateModelWithMinibatchSource(
                 let errors = errors + misMatches
 
                 if Minibatch.isSweepEnd (minibatchData)
-                // if (int total > maxCount)
                 then (total,errors)
                 else countErrors (total,errors)
 
         countErrors (uint32 0,0)
 
+let testingSource = {
+    FilePath = Path.Combine(ImageDataFolder, "Test_cntk_text.txt")
+    Features = featureStreamName
+    Labels = labelsStreamName
+    }
+
 let total,errors = 
     ValidateModelWithMinibatchSource(
         modelFile,
-        testMinibatchSource,
-        featureStreamName, 
-        labelsStreamName, 
+        testingSource,
         DeviceDescriptor.CPUDevice,
         1000)
 
