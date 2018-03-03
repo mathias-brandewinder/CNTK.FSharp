@@ -115,6 +115,23 @@ module Core =
             minibatch.Values
             |> Seq.exists(fun a -> a.sweepEnd)
 
+        let getValues (minibatchSource:MinibatchSource) (name: string) (minibatch: UnorderedMapStreamInformationMinibatchData) =
+            minibatch.[minibatchSource.StreamInfo(name)].data
+
+        let getDense (variable:Variable) (data:Value) =
+            match variable.DataType with
+            | DataType.Double -> 
+                data.GetDenseData<float>(variable) 
+                |> Seq.map (Seq.map float >> Array.ofSeq)
+                |> Array.ofSeq
+            | DataType.Float -> 
+                data.GetDenseData<single>(variable) 
+                |> Seq.map (Seq.map float >> Array.ofSeq)
+                |> Array.ofSeq
+            | DataType.Float16 -> failwith "unsupported data type"
+            | DataType.UChar -> failwith "unsupported data type"
+            | DataType.Unknown -> failwith "unsupported data type"        
+
         type TrainingSummary = {
             Loss:float
             Evaluation:float
@@ -145,6 +162,8 @@ module Core =
                 summary.Samples
                 summary.Loss
                 summary.Evaluation
+
+        
 
     [<RequireQualifiedAccess>]
     module Dict =

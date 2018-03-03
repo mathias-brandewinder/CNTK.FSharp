@@ -13,7 +13,7 @@ open CNTK.FSharp.Sequential
 open System.IO
 
 let numClasses = 10
-let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float, "input")
+let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float)
 let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float)
 
 let network : Computation =
@@ -90,6 +90,10 @@ predictor.Save(modelFile)
 
 // validate the model: this still needs a lot of work to look decent
 
+let dev = DeviceDescriptor.CPUDevice
+let foo : Function = Function.Load(modelFile, dev)
+foo.Inputs |> Seq.filter (fun v -> v.IsInput) |> Seq.toList
+
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
     textSource:TextFormatSource,
@@ -100,23 +104,18 @@ let ValidateModelWithMinibatchSource(
 
         let imageInput = 
             model.Inputs
-            |> Seq.filter (fun i -> i.Name = "input")
+            |> Seq.filter (fun i -> i.IsInput)
             |> Seq.exactlyOne
 
-        printfn "Input %s" (imageInput.Name)
-
         let labelOutput = model.Output
-        printfn "Label %s" (labelOutput.Name)
 
-        let nameMappings : TextFormat.NameMappings = {
+        let mappings : TextFormat.InputMappings = {
             Features = [ 
-                { VariableName = imageInput.Name; SourceName = textSource.Features }
+                { Variable = imageInput; SourceName = textSource.Features }
                 ] 
-            Labels = { VariableName = labelOutput.Name; SourceName = textSource.Labels }
+            Labels = { Variable = labelOutput; SourceName = textSource.Labels }
             }
 
-        let mappings = TextFormat.extractMappings nameMappings model 
-        
         let testMinibatchSource = TextFormat.source (textSource.FilePath, mappings)
 
         let featureStreamInfo = testMinibatchSource.StreamInfo(textSource.Features)
@@ -137,7 +136,9 @@ let ValidateModelWithMinibatchSource(
                 let total = total + minibatchData.[featureStreamInfo].numberOfSamples
 
                 // find the index of the largest label value
-                let labelData = minibatchData.[labelStreamInfo].data.GetDenseData<float32>(labelOutput)
+                let labelData = 
+                    minibatchData.[labelStreamInfo].data.GetDenseData<float32>(labelOutput)
+                    
                 let expectedLabels = 
                     labelData 
                     |> Seq.map (fun l ->                         
@@ -190,7 +191,7 @@ let total,errors =
     ValidateModelWithMinibatchSource(
         modelFile,
         testingSource,
-        DeviceDescriptor.CPUDevice,
-        1000)
+        DeviceDescriptor.CPUDevice
+        )
 
 printfn "Total: %i / Errors: %i" total errors

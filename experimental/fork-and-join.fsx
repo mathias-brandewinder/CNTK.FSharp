@@ -335,20 +335,6 @@ let evaluate
 
         outputDataMap
 
-let getDense (variable:Variable) (data:Value) =
-    match variable.DataType with
-    | DataType.Double -> 
-        data.GetDenseData<float>(variable) 
-        |> Seq.map (Seq.map float >> Array.ofSeq)
-        |> Array.ofSeq
-    | DataType.Float -> 
-        data.GetDenseData<single>(variable) 
-        |> Seq.map (Seq.map float >> Array.ofSeq)
-        |> Array.ofSeq
-    | DataType.Float16 -> failwith "unsupported data type"
-    | DataType.UChar -> failwith "unsupported data type"
-    | DataType.Unknown -> failwith "unsupported data type"
-
 let ValidateModelWithMinibatchSource (
     modelFile:string, 
     mappings:TextFormat.NameMappings,
@@ -381,8 +367,8 @@ let ValidateModelWithMinibatchSource (
                 // find the index of the largest label value
 
                 let labelData = 
-                    minibatchData.[validationSource.StreamInfo(mappings.Labels.SourceName)].data
-                    |> getDense mappings.Labels.Variable
+                    Minibatch.getValues validationSource mappings.Labels.SourceName minibatchData
+                    |> Minibatch.getDense mappings.Labels.Variable
 
                 let expectedLabels = 
                     labelData 
@@ -393,7 +379,7 @@ let ValidateModelWithMinibatchSource (
 
                 let outputData = 
                     outputDataMap.[mappings.Labels.Variable]
-                    |> getDense mappings.Labels.Variable
+                    |> Minibatch.getDense mappings.Labels.Variable
                 
                 let actualLabels =
                     outputData 
