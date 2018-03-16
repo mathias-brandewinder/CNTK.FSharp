@@ -102,12 +102,14 @@ module Sequential =
             Kernel: Kernel 
             OutputFeatures: int
             Initializer: Initializer
+            Strides: int list
             }
 
         let conv2D = {
             Kernel = { Width = 1; Height = 1 } 
             OutputFeatures = 1
             Initializer = GlorotUniform
+            Strides = [ 1; 1 ]
             }
 
         let convolution (args:Conv2D) : Computation = 
@@ -125,7 +127,7 @@ module Sequential =
                     CNTKLib.Convolution(
                         convParams, 
                         input, 
-                        shape [ 1; 1; inputChannels ]
+                        shape (args.Strides @ [inputChannels])
                         )
 
         type Window = {
