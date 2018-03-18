@@ -90,9 +90,9 @@ predictor.Save(modelFile)
 
 // validate the model: this still needs a lot of work to look decent
 
-let dev = DeviceDescriptor.CPUDevice
-let foo : Function = Function.Load(modelFile, dev)
-foo.Inputs |> Seq.filter (fun v -> v.IsInput) |> Seq.toList
+let indexOfLargest xs = 
+    let largest = xs |> Seq.max
+    xs |> Seq.findIndex ((=) largest) 
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
@@ -100,8 +100,9 @@ let ValidateModelWithMinibatchSource(
     device:DeviceDescriptor
     ) =
 
-        let model : Function = Function.Load(modelFile, device)
+        let model = Function.Load(modelFile, device)
 
+        // can this whole block be extracted into a function?
         let imageInput = 
             model.Inputs
             |> Seq.filter (fun i -> i.IsInput)
@@ -137,15 +138,15 @@ let ValidateModelWithMinibatchSource(
 
                 // find the index of the largest label value
                 let labelData = 
-                    minibatchData.[labelStreamInfo].data.GetDenseData<float32>(labelOutput)
-                    
+                    minibatchData
+                    |> Minibatch.getValues testMinibatchSource textSource.Labels
+                    |> Minibatch.getDense labelOutput
+
                 let expectedLabels = 
                     labelData 
-                    |> Seq.map (fun l ->                         
-                        let largest = l |> Seq.max
-                        l.IndexOf largest
-                        )
+                    |> Seq.map indexOfLargest
 
+                // compute the predicted label
                 let inputDataMap = 
                     [
                         imageInput, minibatchData.[featureStreamInfo].data
@@ -159,14 +160,14 @@ let ValidateModelWithMinibatchSource(
                     |> dataMap
                     
                 model.Evaluate(inputDataMap, outputDataMap, device)
-
-                let outputData = outputDataMap.[labelOutput].GetDenseData<float32>(labelOutput)
+                
+                let outputData = 
+                    outputDataMap.[labelOutput]
+                    |> Minibatch.getDense labelOutput 
+                
                 let actualLabels =
                     outputData 
-                    |> Seq.map (fun l ->                         
-                        let largest = l |> Seq.max
-                        l.IndexOf largest
-                        )
+                    |> Seq.map indexOfLargest
 
                 let misMatches = 
                     (actualLabels,expectedLabels)

@@ -242,16 +242,22 @@ let parameterLearners =
 
 let trainer = Trainer.CreateTrainer(output, trainingLoss, prediction, parameterLearners)
 
-[<RequireQualifiedAccess>]
-module Minibatch = 
+type TextSource (
+    filePath:string,
+    mappings:TextFormat.InputMappings, 
+    device:DeviceDescriptor
+    ) =
 
-    let train
-        (device:DeviceDescriptor)
+    let source = TextFormat.source (filePath, mappings)
+
+    member this.NextMinibatch (size:int) =
+        source.GetNextMinibatch(uint32 size, device)
+
+    member this.Train
+        (minibatchSize:int)
         (trainer:Trainer)
-        (source:MinibatchSource)
-        (mappings:TextFormat.InputMappings)
-        (minibatchSize:int) =
-        
+        =
+            
             let minibatch = source.GetNextMinibatch(uint32 minibatchSize, device)
             
             let minibatchData = 
@@ -266,7 +272,7 @@ module Minibatch =
             |> ignore
             
             Minibatch.isSweepEnd(minibatch)
-
+        
 let mappings : TextFormat.InputMappings = {
     Features = 
         [
@@ -276,7 +282,11 @@ let mappings : TextFormat.InputMappings = {
     Labels = { Variable = labels; SourceName = "labels" }
     }
 
-let minibatchSource = TextFormat.source (Path.Combine(__SOURCE_DIRECTORY__, "data"), mappings)
+let textSource = 
+    TextSource(
+        Path.Combine(__SOURCE_DIRECTORY__, "data"), 
+        mappings,
+        device)
 
 let learn epochs =
 
@@ -288,7 +298,7 @@ let learn epochs =
         else
             let step = step + 1
             
-            let endSweep = Minibatch.train device trainer minibatchSource mappings 32
+            let endSweep = trainer |> textSource.Train 32
 
             trainer
             |> Minibatch.summary 
@@ -335,6 +345,10 @@ let evaluate
 
         outputDataMap
 
+let indexOfLargest xs = 
+    let largest = xs |> Seq.max
+    xs |> Seq.findIndex ((=) largest) 
+
 let ValidateModelWithMinibatchSource (
     modelFile:string, 
     mappings:TextFormat.NameMappings,
@@ -372,10 +386,7 @@ let ValidateModelWithMinibatchSource (
 
                 let expectedLabels = 
                     labelData 
-                    |> Seq.map (fun l ->                         
-                        let largest = l |> Seq.max
-                        l |> Array.findIndex ((=) largest)
-                        )
+                    |> Seq.map indexOfLargest
 
                 let outputData = 
                     outputDataMap.[mappings.Labels.Variable]
@@ -383,10 +394,7 @@ let ValidateModelWithMinibatchSource (
                 
                 let actualLabels =
                     outputData 
-                    |> Seq.map (fun l ->                         
-                        let largest = l |> Seq.max
-                        l |> Array.findIndex ((=) largest)
-                        )
+                    |> Seq.map indexOfLargest
 
                 let misMatches = 
                     (actualLabels,expectedLabels)
