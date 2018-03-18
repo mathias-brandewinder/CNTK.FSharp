@@ -105,14 +105,14 @@ module Sequential =
 
         type Conv2D = {
             Kernel: Kernel 
-            OutputFeatures: int
+            Filters: int
             Initializer: Initializer
             Strides: Strides
             }
 
         let conv2D = {
             Kernel = { Width = 1; Height = 1 } 
-            OutputFeatures = 1
+            Filters = 1
             Initializer = GlorotUniform
             Strides = { Horizontal = 1; Vertical = 1 }
             }
@@ -125,7 +125,7 @@ module Sequential =
                     let convParams = 
                         device
                         |> Param.init (
-                            [ kernel.Width; kernel.Height; inputChannels; args.OutputFeatures ], 
+                            [ kernel.Width; kernel.Height; inputChannels; args.Filters ], 
                             DataType.Float,
                             args.Initializer)
 

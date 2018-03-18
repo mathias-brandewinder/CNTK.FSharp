@@ -22,7 +22,7 @@ let network : Computation =
         {    
             Kernel = { Width = 3; Height = 3 } 
             Strides = { Horizontal = 1; Vertical = 1 }
-            OutputFeatures = 4
+            Filters = 4
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
         )
@@ -38,7 +38,7 @@ let network : Computation =
         {    
             Kernel ={ Width = 3; Height = 3 } 
             Strides = { Horizontal = 1; Vertical = 1 }
-            OutputFeatures = 8
+            Filters = 8
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
         )
