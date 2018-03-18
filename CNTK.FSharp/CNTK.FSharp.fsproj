@@ -95,8 +95,8 @@
   <Choose>
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
       <ItemGroup>
-        <Reference Include="Cntk.Core.Managed-2.4">
-          <HintPath>..\packages\CNTK.CPUOnly\lib\net45\x64\Cntk.Core.Managed-2.4.dll</HintPath>
+        <Reference Include="Cntk.Core.Managed-2.5">
+          <HintPath>..\packages\CNTK.CPUOnly\lib\net45\x64\Cntk.Core.Managed-2.5.dll</HintPath>
           <Private>True</Private>
           <Paket>True</Paket>
         </Reference>
