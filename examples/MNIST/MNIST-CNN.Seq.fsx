@@ -21,6 +21,7 @@ let network : Computation =
     |> Layer.stack (Conv2D.convolution 
         {    
             Kernel = { Width = 3; Height = 3 } 
+            Strides = { Horizontal = 1; Vertical = 1 }
             OutputFeatures = 4
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
@@ -30,12 +31,13 @@ let network : Computation =
         {
             PoolingType = PoolingType.Max
             Window = { Width = 3; Height = 3 }
-            Stride = { Horizontal = 2; Vertical = 2 }
+            Strides = { Horizontal = 2; Vertical = 2 }
         }
         )
     |> Layer.stack (Conv2D.convolution
         {    
             Kernel ={ Width = 3; Height = 3 } 
+            Strides = { Horizontal = 1; Vertical = 1 }
             OutputFeatures = 8
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
@@ -45,7 +47,7 @@ let network : Computation =
         {
             PoolingType = PoolingType.Max
             Window = { Width = 3; Height = 3 }
-            Stride = { Horizontal = 2; Vertical = 2 }
+            Strides = { Horizontal = 2; Vertical = 2 }
         }
         )
     |> Layer.stack (Layer.dense numClasses)

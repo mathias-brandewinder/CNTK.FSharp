@@ -98,7 +98,7 @@ module Sequential =
             Height: int
             }
 
-        type Stride = {
+        type Strides = {
             Horizontal: int
             Vertical: int
             }
@@ -107,7 +107,7 @@ module Sequential =
             Kernel: Kernel 
             OutputFeatures: int
             Initializer: Initializer
-            Strides: Stride
+            Strides: Strides
             }
 
         let conv2D = {
@@ -142,7 +142,7 @@ module Sequential =
 
         type Pool2D = {
             Window: Window
-            Stride : Stride 
+            Strides : Strides 
             PoolingType : PoolingType
             }
                          
@@ -151,13 +151,13 @@ module Sequential =
                 fun input ->
 
                     let window = args.Window
-                    let stride = args.Stride
+                    let strides = args.Strides
 
                     CNTKLib.Pooling(
                         input, 
                         args.PoolingType,
                         shape [ window.Width; window.Height ], 
-                        shape [ stride.Horizontal; stride.Vertical ], 
+                        shape [ strides.Horizontal; strides.Vertical ], 
                         [| true |]
                         )
             
