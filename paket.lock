@@ -8,3 +8,4 @@ NUGET
     CNTK.Deps.OpenCV.Zip (2.5)
     FAKE (4.64.11)
     FSharp.Core (4.1.18)
+    NuGet.CommandLine (4.5.1)

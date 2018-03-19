@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+    <metadata>
+        <id>@project@</id>
+        <version>@build.number@</version>
+        <title>@title@</title>
+        <authors>@authors@</authors>
+        <owners>@authors@</owners>
+        <projectUrl>https://github.com/mathias-brandewinder/CNTK.FSharp</projectUrl>
+        <licenseUrl>https://github.com/mathias-brandewinder/CNTK.FSharp/blob/master/LICENSE</licenseUrl>
+        <requireLicenseAcceptance>false</requireLicenseAcceptance>
+        <description>@description@</description>
+        <tags>@tags@</tags>
+        <summary>@summary@</summary>
+        <releaseNotes>@releaseNotes@</releaseNotes>
+        @dependencies@
+        @references@
+    </metadata>
+    @files@
+</package>
