@@ -18,7 +18,7 @@ let labels = CNTKLib.InputVariable(shape [ numClasses ], DataType.Float)
 
 let network : Computation =
     Layer.scale (float32 (1./255.))
-    |> Layer.stack (Conv2D.convolution 
+    |> Layer.add (Conv2D.convolution 
         {    
             Kernel = { Width = 3; Height = 3 } 
             Strides = { Horizontal = 1; Vertical = 1 }
@@ -26,15 +26,15 @@ let network : Computation =
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
         )
-    |> Layer.stack Activation.ReLU
-    |> Layer.stack (Conv2D.pooling
+    |> Layer.add Activation.ReLU
+    |> Layer.add (Conv2D.pooling
         {
             PoolingType = PoolingType.Max
             Window = { Width = 3; Height = 3 }
             Strides = { Horizontal = 2; Vertical = 2 }
         }
         )
-    |> Layer.stack (Conv2D.convolution
+    |> Layer.add (Conv2D.convolution
         {    
             Kernel ={ Width = 3; Height = 3 } 
             Strides = { Horizontal = 1; Vertical = 1 }
@@ -42,15 +42,15 @@ let network : Computation =
             Initializer = Custom(CNTKLib.GlorotUniformInitializer(0.26, -1, 2))
         }
         )
-    |> Layer.stack Activation.ReLU
-    |> Layer.stack (Conv2D.pooling
+    |> Layer.add Activation.ReLU
+    |> Layer.add (Conv2D.pooling
         {
             PoolingType = PoolingType.Max
             Window = { Width = 3; Height = 3 }
             Strides = { Horizontal = 2; Vertical = 2 }
         }
         )
-    |> Layer.stack (Layer.dense numClasses)
+    |> Layer.add (Layer.dense numClasses)
 
 let spec = {
     Features = input

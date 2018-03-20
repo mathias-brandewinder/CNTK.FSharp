@@ -19,7 +19,7 @@ module Sequential =
     module Layer = 
 
         /// Combine 2 Computation Layers into 1
-        let stack (next:Computation) (curr:Computation) : Computation =
+        let add (next:Computation) (curr:Computation) : Computation =
             fun device ->
                 fun variable ->
                     let intermediate = new Variable(curr device variable)
@@ -28,7 +28,7 @@ module Sequential =
         /// Combine a sequence of Computation Layers into 1
         let sequence (computations: Computation seq) =
             computations
-            |> Seq.reduce (fun acc c -> stack c acc)
+            |> Seq.reduce (fun acc c -> add c acc)
         
         let scale<'T> (scalar:'T) : Computation = 
             fun device ->
@@ -140,10 +140,15 @@ module Sequential =
             Height: int          
             }
 
+        type Padding =
+            | Valid
+            | Same
+
         type Pool2D = {
             Window: Window
-            Strides : Strides 
-            PoolingType : PoolingType
+            Strides: Strides 
+            PoolingType: PoolingType
+            Padding: Padding
             }
                          
         let pooling (args:Pool2D) : Computation = 
@@ -152,13 +157,17 @@ module Sequential =
 
                     let window = args.Window
                     let strides = args.Strides
+                    let padding =
+                        match args.Padding with
+                        | Valid -> [| false |]
+                        | Same -> [| true |]
 
                     CNTKLib.Pooling(
                         input, 
                         args.PoolingType,
                         shape [ window.Width; window.Height ], 
                         shape [ strides.Horizontal; strides.Vertical ], 
-                        [| true |]
+                        padding
                         )
             
     type Schedule = {
