@@ -140,15 +140,11 @@ module Sequential =
             Height: int          
             }
 
-        type Padding =
-            | Valid
-            | Same
-
         type Pool2D = {
             Window: Window
             Strides: Strides 
             PoolingType: PoolingType
-            Padding: Padding
+            Padding: bool
             }
                          
         let pooling (args:Pool2D) : Computation = 
@@ -157,17 +153,13 @@ module Sequential =
 
                     let window = args.Window
                     let strides = args.Strides
-                    let padding =
-                        match args.Padding with
-                        | Valid -> [| false |]
-                        | Same -> [| true |]
 
                     CNTKLib.Pooling(
                         input, 
                         args.PoolingType,
                         shape [ window.Width; window.Height ], 
                         shape [ strides.Horizontal; strides.Vertical ], 
-                        padding
+                        [| args.Padding |]
                         )
             
     type Schedule = {
