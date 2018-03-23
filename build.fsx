@@ -1,11 +1,13 @@
 (*
 FAKE Build Script
 *)
+open System
+open System.IO
 
 #r @"packages/FAKE/tools/FakeLib.dll"
 open Fake
-open System
-open System.IO
+open Fake.AssemblyInfoFile
+open Fake.ReleaseNotesHelper
 
 (*
 Build configuration
@@ -14,29 +16,42 @@ Build configuration
 Environment.CurrentDirectory <- __SOURCE_DIRECTORY__
 
 let projectName = "CNTK.FSharp"
+let authors = [ "Mathias Brandewinder" ]
+let title = "F# extensions for CNTK"
+let summary = "F# extensions to simplify CNTK usage"
+let description = "F# extensions to simplify CNTK usage"
+let tags = "f#, fsharp, cntk, machine-learning, deep-learning"
+
+let releaseNotes = 
+    LoadReleaseNotes "RELEASE_NOTES.md" 
+
+let version = releaseNotes.AssemblyVersion
+
+let project = [ "./CNTK.FSharp/CNTK.FSharp.fsproj" ]
+let assemblyInfo = [ "./CNTK.FSharp/AssemblyInfo.fs" ]
 
 // Build output directory
 let buildDir = "./build/"
-
-let project = [ "./CNTK.FSharp/CNTK.FSharp.fsproj" ]
-
-// nuget package directory
+// nuget package output directory
 let nugetDir = "./nuget/"
 
-module Nuget = 
-
-    let authors = [ "Mathias Brandewinder" ]
-    let project = projectName
-    let title = "F# extensions for CNTK"
-    let summary = "F# extensions to simplify CNTK usage"
-    let description = "F# extensions to simplify CNTK usage"
-    let version = "0.1.2"
-    let tags = "f#, fsharp, cntk, machine-learning, deep-learning"
     
 
 (*
 Build target / steps
 *)
+
+Target "AssemblyInfo" (fun _ ->
+    for file in assemblyInfo do
+        CreateFSharpAssemblyInfo file
+            [ 
+                Attribute.Title title
+                Attribute.Product projectName
+                Attribute.Description summary
+                Attribute.Version version
+                Attribute.FileVersion version
+            ]
+    )
 
 Target "RestorePackages" RestorePackages
 
@@ -66,13 +81,13 @@ Target "CreateNuget" (fun _ ->
     "./nuget/" + projectName + ".nuspec"
     |> NuGet (fun p ->
         { p with
-            Authors = Nuget.authors
-            Project = Nuget.project
-            Title = Nuget.title
-            Summary = Nuget.summary
-            Description = Nuget.description
-            Version = Nuget.version
-            Tags = Nuget.tags
+            Authors = authors
+            Project = projectName
+            Title = title
+            Summary = summary
+            Description = description
+            Version = version
+            Tags = tags
             WorkingDir = buildDir
             OutputPath = nugetDir
             Dependencies = 
@@ -100,6 +115,7 @@ Build step dependencies
     ==> "LocalBuild"
 
 "RestorePackages"
+    ==> "AssemblyInfo"
     ==> "Clean"
     ==> "ReleaseBuild"
     ==> "CreateNuget"
