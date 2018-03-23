@@ -14,8 +14,6 @@ Build configuration
 Environment.CurrentDirectory <- __SOURCE_DIRECTORY__
 
 let projectName = "CNTK.FSharp"
-let projectDescription = "F# extensions to simplify CNTK usage"
-let projectSummary = "F# extensions to simplify CNTK usage"
 
 // Build output directory
 let buildDir = "./build/"
@@ -25,6 +23,16 @@ let project = [ "./CNTK.FSharp/CNTK.FSharp.fsproj" ]
 // nuget package directory
 let nugetDir = "./nuget/"
 
+module Nuget = 
+
+    let authors = [ "Mathias Brandewinder" ]
+    let project = projectName
+    let title = "F# extensions for CNTK"
+    let summary = "F# extensions to simplify CNTK usage"
+    let description = "F# extensions to simplify CNTK usage"
+    let version = "0.1.2"
+    let tags = "f#, fsharp, cntk, machine-learning, deep-learning"
+    
 
 (*
 Build target / steps
@@ -38,10 +46,6 @@ Target "Clean" (fun _ ->
     )
 
 Target "LocalBuild" (fun _ ->
-    // Copy the dependency loading script into buildDir
-    "ScriptLoader.fsx"
-    |> CopyFile buildDir
-    // Build the project to buildDir
     project
     |> MSBuild buildDir "Rebuild" ["Platform", "x64"]  
     |> Log "Build Output: "
@@ -49,7 +53,7 @@ Target "LocalBuild" (fun _ ->
 
 Target "ReleaseBuild" (fun _ ->
     // Copy the dependency loading script into buildDir
-    "ScriptLoader.fsx"
+    Path.Combine(nugetDir,"Dependencies.fsx")
     |> CopyFile buildDir
     // Build the project to buildDir
     project
@@ -62,13 +66,13 @@ Target "CreateNuget" (fun _ ->
     "./nuget/" + projectName + ".nuspec"
     |> NuGet (fun p ->
         { p with
-            Authors = [ "Mathias Brandewinder" ]
-            Project = projectName
-            Title = "F# extensions for CNTK"
-            Summary = projectSummary
-            Description = projectDescription
-            Version = "0.1.1-alpha"
-            Tags = "f#, fsharp, cntk, machine-learning, deep-learning"
+            Authors = Nuget.authors
+            Project = Nuget.project
+            Title = Nuget.title
+            Summary = Nuget.summary
+            Description = Nuget.description
+            Version = Nuget.version
+            Tags = Nuget.tags
             WorkingDir = buildDir
             OutputPath = nugetDir
             Dependencies = 
@@ -82,7 +86,7 @@ Target "CreateNuget" (fun _ ->
             Files = 
                 [ 
                     "CNTK.FSharp.dll", Some "lib/", None
-                    "ScriptLoader.fsx", Some "content/", None
+                    "Dependencies.fsx", Some "scripts/", None
                 ]
         })
     )    

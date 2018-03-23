@@ -1,7 +1,7 @@
 framework:net461
 source https://www.nuget.org/api/v2
 
-nuget FSharp.Core = 4.1.18
+nuget FSharp.Core < 4.3
 nuget CNTK.CPUOnly
 nuget FAKE
 nuget Nuget.CommandLine
