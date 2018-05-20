@@ -333,6 +333,9 @@ let Train (device:DeviceDescriptor) =
 
     learnEpoch (0,numEpochs)
 
+    let modelFile = Path.Combine(__SOURCE_DIRECTORY__,"LSTM.model")
+    classifierOutput.Save(modelFile)
+
 let device = DeviceDescriptor.CPUDevice
 
 Train device
