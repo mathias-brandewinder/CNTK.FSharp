@@ -1,3 +1,6 @@
+#### 0.1.4 - May 21 2018
+* Upgraded to CNTK 2.5.1
+
 #### 0.1.3 - March 23 2018
 * Fixed incorrect assembly version
 
