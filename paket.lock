@@ -1,11 +1,11 @@
 RESTRICTION: == net461
 NUGET
   remote: https://www.nuget.org/api/v2
-    CNTK.CPUOnly (2.5)
-      CNTK.Deps.MKL (2.5)
-      CNTK.Deps.OpenCV.Zip (2.5)
-    CNTK.Deps.MKL (2.5)
-    CNTK.Deps.OpenCV.Zip (2.5)
-    FAKE (4.64.11)
+    CNTK.CPUOnly (2.5.1)
+      CNTK.Deps.MKL (2.5.1)
+      CNTK.Deps.OpenCV.Zip (2.5.1)
+    CNTK.Deps.MKL (2.5.1)
+    CNTK.Deps.OpenCV.Zip (2.5.1)
+    FAKE (4.64.13)
     FSharp.Core (4.2.3)
-    NuGet.CommandLine (4.5.1)
+    NuGet.CommandLine (4.6.2)
