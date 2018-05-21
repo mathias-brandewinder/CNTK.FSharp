@@ -92,7 +92,7 @@ Target "CreateNuget" (fun _ ->
             OutputPath = nugetDir
             Dependencies = 
                 [ 
-                    "CNTK.CPUOnly", "2.5.0" 
+                    "CNTK.CPUOnly", "2.5.1" 
                 ]
             References = 
                 [ 

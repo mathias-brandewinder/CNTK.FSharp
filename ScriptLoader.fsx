@@ -28,4 +28,4 @@ dependencies
 #I "./packages/CNTK.CPUOnly/lib/net45/x64/"
 #I "./packages/CNTK.CPUOnly/support/x64/Release/"
 
-#r "./packages/CNTK.CPUOnly/lib/net45/x64/Cntk.Core.Managed-2.5.dll"
+#r "./packages/CNTK.CPUOnly/lib/net45/x64/Cntk.Core.Managed-2.5.1.dll"
