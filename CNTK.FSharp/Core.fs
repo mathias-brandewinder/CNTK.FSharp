@@ -108,6 +108,23 @@ module Core =
         | SquaredError -> 
             CNTKLib.SquaredError(var predicted,actual)
 
+    type Optimizer =
+        | SGD
+        | MomentumSGD of float
+
+    let learnWith 
+        (optimizer:Optimizer, schedule:TrainingParameterScheduleDouble) 
+            (parameters:Parameter seq) =
+                match optimizer with
+                | SGD -> 
+                    Learner.SGDLearner(ResizeArray(parameters), schedule)
+                | MomentumSGD(momentumTimeConstant) ->
+                    Learner.MomentumSGDLearner(
+                        ResizeArray(parameters), 
+                        schedule, 
+                        CNTKLib.MomentumAsTimeConstantSchedule(momentumTimeConstant), 
+                        true)
+
     [<RequireQualifiedAccess>]
     module Minibatch =
 

@@ -353,15 +353,10 @@ module Sequential =
                     let thoughtVectorFunction : Function = CNTKLib.SequenceLast(var LSTMFunction)
 
                     Layer.dense numOutputClasses device (var thoughtVectorFunction)
-
-    type LearnerType =
-        | SGDLearner
-        | MomentumSGDLearner of float
-        
+       
     type Schedule = {
         Rate: float
         MinibatchSize: int
-        Type: LearnerType
         }
 
     type Config = {
@@ -369,20 +364,18 @@ module Sequential =
         Epochs: int
         Device: DeviceDescriptor
         Schedule: Schedule
+        Optimizer: Optimizer
         } 
 
-    let learning (predictor:Function) (schedule:Schedule) =   
+    let learning (predictor:Function) (config:Config) = 
+        let schedule = config.Schedule 
         let learningRatePerSample = 
-            new TrainingParameterScheduleDouble(schedule.Rate, uint32 schedule.MinibatchSize)
-        let parameterLearners =
-            ResizeArray<Learner>(
-                [ 
-                    match schedule.Type with
-                    | SGDLearner ->
-                        yield Learner.SGDLearner(predictor.Parameters(), learningRatePerSample) 
-                    | MomentumSGDLearner momentumTimeConstant ->
-                        yield Learner.MomentumSGDLearner(predictor.Parameters(), learningRatePerSample, CNTKLib.MomentumAsTimeConstantSchedule(momentumTimeConstant), true)
-                ])
+            new TrainingParameterScheduleDouble(schedule.Rate, uint32 schedule.MinibatchSize)        
+        let parameterLearners = 
+            predictor.Parameters ()
+            |> learnWith (config.Optimizer,learningRatePerSample)
+            |> Seq.singleton
+            |> ResizeArray
         parameterLearners
 
     type TextFormatSource = {
@@ -416,7 +409,7 @@ module Sequential =
             let loss = evaluation spec.Loss (predictor,spec.Labels)
             let eval = evaluation spec.Eval (predictor,spec.Labels)   
 
-            let parameterLearners = learning predictor config.Schedule     
+            let parameterLearners = learning predictor config     
             let trainer = Trainer.CreateTrainer(predictor, loss, eval, parameterLearners)
         
             let input = spec.Features
