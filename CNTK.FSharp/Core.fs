@@ -110,11 +110,16 @@ module Core =
 
     type Optimizer =
         | SGD
-        | MomentumSGD of float
-
+        | MomentumSGD of momentum:float
+        | AdaDelta of rho:float * epsilon:float
+        | AdaGrad
+        | Adam
+        | RMSProp
+    
     let learnWith 
         (optimizer:Optimizer, schedule:TrainingParameterScheduleDouble) 
             (parameters:Parameter seq) =
+                // TODO: add AdditionalLearningOptions 
                 match optimizer with
                 | SGD -> 
                     Learner.SGDLearner(ResizeArray(parameters), schedule)
@@ -124,6 +129,14 @@ module Core =
                         schedule, 
                         CNTKLib.MomentumAsTimeConstantSchedule(momentumTimeConstant), 
                         true)
+                | AdaDelta(rho,epsilon) -> 
+                    failwith "Not implemented yet"
+                | AdaGrad -> 
+                    failwith "Not implemented yet"
+                | Adam -> 
+                    failwith "Not implemented yet"
+                | RMSProp -> 
+                    failwith "Not implemented yet"
 
     [<RequireQualifiedAccess>]
     module Minibatch =
