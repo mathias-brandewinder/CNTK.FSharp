@@ -112,10 +112,15 @@ module Core =
         | SGD
         | MomentumSGD of momentum:float
         | AdaDelta of rho:float * epsilon:float
-        | AdaGrad
-        | Adam
-        | RMSProp
+        | AdaGrad of needsMultiplier:bool
+        | Adam of momentum:float * unitGain:bool * varianceMomentum:float * epsilon:float * adaMax:bool
+        | RMSProp of gamma:float * inc:float * dec:float * max:float * min:float * needsMultiplier:bool
     
+    let paramsVector (parameters:Parameter seq) = 
+        let parametersVector = new ParameterVector()
+        parameters |> Seq.iter (parametersVector.Add)
+        parametersVector
+
     let learnWith 
         (optimizer:Optimizer, schedule:TrainingParameterScheduleDouble) 
             (parameters:Parameter seq) =
@@ -130,13 +135,15 @@ module Core =
                         CNTKLib.MomentumAsTimeConstantSchedule(momentumTimeConstant), 
                         true)
                 | AdaDelta(rho,epsilon) -> 
-                    failwith "Not implemented yet"
-                | AdaGrad -> 
-                    failwith "Not implemented yet"
-                | Adam -> 
-                    failwith "Not implemented yet"
-                | RMSProp -> 
-                    failwith "Not implemented yet"
+                    CNTKLib.AdaDeltaLearner(paramsVector parameters, schedule,rho,epsilon)                    
+                | AdaGrad(needsMultiplier) -> 
+                    CNTKLib.AdaGradLearner(paramsVector parameters, schedule, needsMultiplier)
+                | Adam(momentum, unitGain, varianceMomentum, epsilon, adaMax) -> 
+                    let momentum = new TrainingParameterScheduleDouble(momentum)
+                    let varianceMomentum = new TrainingParameterScheduleDouble(varianceMomentum)
+                    CNTKLib.AdamLearner(paramsVector parameters, schedule, momentum, unitGain, varianceMomentum, epsilon, adaMax)
+                | RMSProp(gamma, inc, dec, max, min, needsMultiplier) -> 
+                    CNTKLib.RMSPropLearner(paramsVector parameters, schedule, gamma, inc, dec, max, min, needsMultiplier)
 
     [<RequireQualifiedAccess>]
     module Minibatch =
