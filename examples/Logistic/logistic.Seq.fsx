@@ -109,6 +109,7 @@ let config = {
     Epochs = 10
     Device = device
     Schedule = { Rate = 0.01; MinibatchSize = 1 }
+    Optimizer = SGD
     }
 
 let minibatchSource = textSource learningSource InfinitelyRepeat

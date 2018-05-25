@@ -73,7 +73,8 @@ let config = {
     MinibatchSize = 64
     Epochs = 5
     Device = DeviceDescriptor.CPUDevice
-    Schedule = { Rate = 0.003125; MinibatchSize = 1; Type = SGDLearner }
+    Schedule = { Rate = 0.003125; MinibatchSize = 1 }
+    Optimizer = SGD
     }
 
 let source : TextFormatSource = {

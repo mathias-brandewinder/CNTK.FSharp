@@ -63,7 +63,8 @@ let config = {
     MinibatchSize = 200
     Epochs = 5
     Device = DeviceDescriptor.CPUDevice
-    Schedule = { Rate = 0.0005; MinibatchSize = 1; Type = MomentumSGDLearner 256. }
+    Schedule = { Rate = 0.0005; MinibatchSize = 1 }
+    Optimizer = MomentumSGD 256.
     }
 
 let trainer = Learner ()
