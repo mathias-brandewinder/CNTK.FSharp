@@ -1,2 +1,2 @@
 FSharp.Core
-CNTK.CPUOnly
+CNTK.GPU

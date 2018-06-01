@@ -67,6 +67,13 @@
   <Choose>
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
       <PropertyGroup>
+        <__paket__CNTK_GPU_targets>net45\CNTK.GPU</__paket__CNTK_GPU_targets>
+      </PropertyGroup>
+    </When>
+  </Choose>
+  <Choose>
+    <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
+      <PropertyGroup>
         <__paket__CNTK_Deps_OpenCV_Zip_targets>net45\CNTK.Deps.OpenCV.Zip</__paket__CNTK_Deps_OpenCV_Zip_targets>
       </PropertyGroup>
     </When>
@@ -81,7 +88,14 @@
   <Choose>
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
       <PropertyGroup>
-        <__paket__CNTK_CPUOnly_targets>net45\CNTK.CPUOnly</__paket__CNTK_CPUOnly_targets>
+        <__paket__CNTK_Deps_cuDNN_targets>net45\CNTK.Deps.cuDNN</__paket__CNTK_Deps_cuDNN_targets>
+      </PropertyGroup>
+    </When>
+  </Choose>
+  <Choose>
+    <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
+      <PropertyGroup>
+        <__paket__CNTK_Deps_Cuda_targets>net45\CNTK.Deps.Cuda</__paket__CNTK_Deps_Cuda_targets>
       </PropertyGroup>
     </When>
   </Choose>
@@ -96,7 +110,7 @@
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.6.1'">
       <ItemGroup>
         <Reference Include="Cntk.Core.Managed-2.5.1">
-          <HintPath>..\packages\CNTK.CPUOnly\lib\net45\x64\Cntk.Core.Managed-2.5.1.dll</HintPath>
+          <HintPath>..\packages\CNTK.GPU\lib\net45\x64\Cntk.Core.Managed-2.5.1.dll</HintPath>
           <Private>True</Private>
           <Paket>True</Paket>
         </Reference>
@@ -114,7 +128,9 @@
       </ItemGroup>
     </When>
   </Choose>
-  <Import Project="..\packages\CNTK.CPUOnly\build\$(__paket__CNTK_CPUOnly_targets).targets" Condition="Exists('..\packages\CNTK.CPUOnly\build\$(__paket__CNTK_CPUOnly_targets).targets')" Label="Paket" />
+  <Import Project="..\packages\CNTK.Deps.Cuda\build\$(__paket__CNTK_Deps_Cuda_targets).targets" Condition="Exists('..\packages\CNTK.Deps.Cuda\build\$(__paket__CNTK_Deps_Cuda_targets).targets')" Label="Paket" />
+  <Import Project="..\packages\CNTK.Deps.cuDNN\build\$(__paket__CNTK_Deps_cuDNN_targets).targets" Condition="Exists('..\packages\CNTK.Deps.cuDNN\build\$(__paket__CNTK_Deps_cuDNN_targets).targets')" Label="Paket" />
   <Import Project="..\packages\CNTK.Deps.MKL\build\$(__paket__CNTK_Deps_MKL_targets).targets" Condition="Exists('..\packages\CNTK.Deps.MKL\build\$(__paket__CNTK_Deps_MKL_targets).targets')" Label="Paket" />
   <Import Project="..\packages\CNTK.Deps.OpenCV.Zip\build\$(__paket__CNTK_Deps_OpenCV_Zip_targets).targets" Condition="Exists('..\packages\CNTK.Deps.OpenCV.Zip\build\$(__paket__CNTK_Deps_OpenCV_Zip_targets).targets')" Label="Paket" />
+  <Import Project="..\packages\CNTK.GPU\build\$(__paket__CNTK_GPU_targets).targets" Condition="Exists('..\packages\CNTK.GPU\build\$(__paket__CNTK_GPU_targets).targets')" Label="Paket" />
 </Project>

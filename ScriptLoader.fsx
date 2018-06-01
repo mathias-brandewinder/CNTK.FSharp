@@ -11,11 +11,13 @@ Environment.SetEnvironmentVariable("Path",
     Environment.GetEnvironmentVariable("Path") + ";" + __SOURCE_DIRECTORY__)
 
 let dependencies = [
-        "./packages/CNTK.CPUOnly/lib/net45/x64/"
-        "./packages/CNTK.CPUOnly/support/x64/Release/"
+        "./packages/CNTK.GPU/lib/net45/x64/"
+        "./packages/CNTK.GPU/support/x64/Release/"
         "./packages/CNTK.Deps.MKL/support/x64/Dependency/"
+        "./packages/CNTK.Deps.Cuda/support/x64/Dependency/"
+        "./packages/CNTK.Deps.cuDNN/support/x64/Dependency/"
         "./packages/CNTK.Deps.OpenCV.Zip/support/x64/Dependency/"
-        "./packages/CNTK.Deps.OpenCV.Zip/support/x64/Dependency/Release"
+        "./packages/CNTK.Deps.OpenCV.Zip/support/x64/Dependency/Release/"
     ]
 
 dependencies 
@@ -25,7 +27,7 @@ dependencies
         Environment.GetEnvironmentVariable("Path") + ";" + path)
     )    
 
-#I "./packages/CNTK.CPUOnly/lib/net45/x64/"
-#I "./packages/CNTK.CPUOnly/support/x64/Release/"
+#I "./packages/CNTK.GPU/lib/net45/x64/"
+#I "./packages/CNTK.GPU/support/x64/Release/"
 
-#r "./packages/CNTK.CPUOnly/lib/net45/x64/Cntk.Core.Managed-2.5.1.dll"
+#r "./packages/CNTK.GPU/lib/net45/x64/Cntk.Core.Managed-2.5.1.dll"

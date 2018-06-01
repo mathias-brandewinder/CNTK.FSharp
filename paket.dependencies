@@ -2,6 +2,6 @@ framework:net461
 source https://www.nuget.org/api/v2
 
 nuget FSharp.Core < 4.3
-nuget CNTK.CPUOnly
+nuget CNTK.GPU
 nuget FAKE
 nuget Nuget.CommandLine
