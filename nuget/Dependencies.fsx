@@ -19,11 +19,13 @@ open System
 open System.IO
 
 let dependencies = [
-        "../../CNTK.CPUOnly/lib/net45/x64/"
-        "../../CNTK.CPUOnly/support/x64/Release/"
-        "../../CNTK.Deps.MKL/support/x64/Dependency/"
-        "../../CNTK.Deps.OpenCV.Zip/support/x64/Dependency/"
-        "../../CNTK.Deps.OpenCV.Zip/support/x64/Dependency/Release"
+        "../../packages/CNTK.GPU/lib/net45/x64/"
+        "../../packages/CNTK.GPU/support/x64/Release/"
+        "../../packages/CNTK.Deps.MKL/support/x64/Dependency/"
+        "../../packages/CNTK.Deps.Cuda/support/x64/Dependency/"
+        "../../packages/CNTK.Deps.cuDNN/support/x64/Dependency/"
+        "../../packages/CNTK.Deps.OpenCV.Zip/support/x64/Dependency/"
+        "../../packages/CNTK.Deps.OpenCV.Zip/support/x64/Dependency/Release/"
     ]
 
 dependencies 
