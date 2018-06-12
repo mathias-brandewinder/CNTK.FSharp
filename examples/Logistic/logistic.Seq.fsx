@@ -14,6 +14,7 @@ open System
 open System.Collections.Generic
 open System.Text
 open System.IO
+open System.Threading
 
 // Conversion of the original C# code to an F# script
 
@@ -78,7 +79,7 @@ generateSyntheticData (inputDim, numOutputClasses)
         |> fun line -> builder.AppendLine(line)
         |> ignore
     )
-
+builder.Remove(builder.Length - 2, 2)
 File.WriteAllText(dataFile, builder.ToString())
 
 let device = DeviceDescriptor.CPUDevice
@@ -95,14 +96,6 @@ let spec = {
     Loss = CrossEntropyWithSoftmax
     Eval = ClassificationError
     }
-
-let learningSource: DataSource = {
-    SourcePath = dataFile
-    Streams = [
-        Stream.config(featureStreamName, inputDim)
-        Stream.config(labelsStreamName, numOutputClasses)
-        ]
-    }
     
 let config = {
     MinibatchSize = 64
@@ -110,31 +103,28 @@ let config = {
     Device = device
     Schedule = { Rate = 0.01; MinibatchSize = 1 }
     Optimizer = SGD
+    CancellationToken = CancellationToken.None
     }
 
-let minibatchSource = textSource learningSource InfinitelyRepeat
+let streamConfigurations = 
+    [|
+        new StreamConfiguration(featureStreamName, inputDim)
+        new StreamConfiguration(labelsStreamName, numOutputClasses)
+    |]
+
+let minibatchSource = 
+    MinibatchSource.TextFormatMinibatchSource(
+        dataFile, 
+        streamConfigurations, 
+        MinibatchSource.FullDataSweep)
+
 let learner = Learner ()
-learner.MinibatchProgress.Add basicMinibatchSummary
+learner.MinibatchProgress.Add Minibatch.basicPrint
 
 let predictor = learner.learn minibatchSource (featureStreamName, labelsStreamName) config spec
 
 let modelFile = Path.Combine(__SOURCE_DIRECTORY__, "logistic.model")
 predictor.Save(modelFile)
-
-let streams = 
-    [
-        Stream.config(featureStreamName, inputDim)
-        Stream.config(labelsStreamName, numOutputClasses)
-    ]    
-    |> Seq.map (fun config -> config ()) 
-    |> ResizeArray
-
-// validate the model: this still needs a lot of work to look decent
-let minibatchSourceNewModel = 
-    MinibatchSource.TextFormatMinibatchSource(
-        dataFile, 
-        streams, 
-        MinibatchSource.FullDataSweep)
 
 let ValidateModelWithMinibatchSource(
     modelFile:string, 
@@ -213,7 +203,7 @@ let ValidateModelWithMinibatchSource(
 let total,errors = 
     ValidateModelWithMinibatchSource(
         modelFile, 
-        minibatchSourceNewModel,
+        minibatchSource,
         featureStreamName, 
         labelsStreamName, 
         DeviceDescriptor.CPUDevice,

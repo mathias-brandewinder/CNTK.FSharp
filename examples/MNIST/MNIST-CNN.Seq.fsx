@@ -11,6 +11,7 @@ open CNTK.FSharp
 open CNTK.FSharp.Sequential
  
 open System.IO
+open System.Threading
 
 let numClasses = 10
 let input = CNTKLib.InputVariable(shape [ 28; 28; 1 ], DataType.Float)
@@ -75,6 +76,7 @@ let config = {
     Device = DeviceDescriptor.CPUDevice
     Schedule = { Rate = 0.003125; MinibatchSize = 1 }
     Optimizer = SGD
+    CancellationToken = CancellationToken.None
     }
 
 let source : TextFormatSource = {

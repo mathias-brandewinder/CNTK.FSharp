@@ -4,6 +4,7 @@ module Sequential =
 
     open System.Collections.Generic
     open CNTK
+    open System.Threading
 
     type Computation = DeviceDescriptor -> Variable -> Function
 
@@ -365,6 +366,7 @@ module Sequential =
         Device: DeviceDescriptor
         Schedule: Schedule
         Optimizer: Optimizer
+        CancellationToken: CancellationToken
         } 
 
     let learning (predictor:Function) (config:Config) = 
@@ -420,10 +422,10 @@ module Sequential =
 
             let rec learnEpoch (step,epoch) = 
 
-                Minibatch.summary trainer
+                Minibatch.summary trainer epoch
                 |> progress.Trigger
 
-                if epoch <= 0
+                if epoch <= 0 || config.CancellationToken.IsCancellationRequested
                 // we are done : return function
                 then predictor
                 else

@@ -12,6 +12,7 @@ open CNTK.FSharp.Sequential
 
 open System.IO
 open System.Collections.Generic
+open System.Threading
 
 let DataFolder = __SOURCE_DIRECTORY__
 
@@ -65,6 +66,7 @@ let config = {
     Device = DeviceDescriptor.CPUDevice
     Schedule = { Rate = 0.0005; MinibatchSize = 1 }
     Optimizer = MomentumSGD 256.
+    CancellationToken = CancellationToken.None
     }
 
 let trainer = Learner ()

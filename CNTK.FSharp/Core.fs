@@ -174,9 +174,10 @@ module Core =
             Evaluation:float
             Samples:uint32
             TotalSamples:uint32
+            Epoch:int32
             }
 
-        let summary (trainer:Trainer) =
+        let summary (trainer:Trainer) epoch =
             if trainer.PreviousMinibatchSampleCount () <> (uint32 0)
             then
                 {
@@ -184,6 +185,7 @@ module Core =
                     Evaluation = trainer.PreviousMinibatchEvaluationAverage ()
                     Samples = trainer.PreviousMinibatchSampleCount ()
                     TotalSamples = trainer.TotalNumberOfSamplesSeen ()
+                    Epoch = epoch
                 }
             else
                 {
@@ -191,11 +193,13 @@ module Core =
                     Evaluation = Double.NaN
                     Samples = trainer.PreviousMinibatchSampleCount ()
                     TotalSamples = trainer.TotalNumberOfSamplesSeen ()
+                    Epoch = epoch
                 }
 
         let basicPrint (summary:TrainingSummary) =
-            printfn "Total: %-8i Batch: %3i Loss: %.3f Eval: %.3f"
+            printfn "Total: %-8i Epoch: %3i Batch: %3i Loss: %.3f Eval: %.3f"
                 summary.TotalSamples
+                summary.Epoch
                 summary.Samples
                 summary.Loss
                 summary.Evaluation
