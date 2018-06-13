@@ -116,7 +116,7 @@ let minibatchSource =
     MinibatchSource.TextFormatMinibatchSource(
         dataFile, 
         streamConfigurations, 
-        MinibatchSource.FullDataSweep)
+        MinibatchSource.InfinitelyRepeat)
 
 let learner = Learner ()
 learner.MinibatchProgress.Add Minibatch.basicPrint
